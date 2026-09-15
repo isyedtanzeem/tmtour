@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="100" fill="#ffffff"/>
+  <g transform="translate(256, 256) scale(0.46) translate(-525, -230)">
+    <!-- Overlapping Circles -->
+    <circle cx="215" cy="230" r="185" fill="#00A4E4" />
+    <circle cx="495" cy="230" r="185" fill="#FA4936" />
+    <circle cx="775" cy="230" r="185" fill="#9333EA" />
+
+    <!-- Traveler -->
+    <circle cx="115" cy="115" r="13" fill="#ffffff" />
+    <path d="M 115 128 L 108 190" stroke="#ffffff" stroke-width="7" stroke-linecap="round" fill="none" />
+    <path d="M 112 142 L 78 152" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" fill="none" />
+    <path d="M 112 142 L 126 172" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" fill="none" />
+    <path d="M 108 190 L 92 254" stroke="#ffffff" stroke-width="6.5" stroke-linecap="round" fill="none" />
+    <path d="M 108 190 L 128 250" stroke="#ffffff" stroke-width="6.5" stroke-linecap="round" fill="none" />
+    <g transform="translate(56, 202) rotate(-14)">
+      <rect x="-18" y="0" width="36" height="52" rx="7" fill="#ffffff" />
+      <path d="M -7 0 L -7 -52 M 7 0 L 7 -52 M -9 -52 L 9 -52" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" fill="none" />
+      <circle cx="-11" cy="54" r="3.5" fill="#ffffff" />
+      <circle cx="11" cy="54" r="3.5" fill="#ffffff" />
+    </g>
+
+    <!-- Typography -->
+    <g font-family="'Pacifico', cursive" font-size="168px" fill="#ffffff">
+      <text x="32" y="278">Trip</text>
+      <text x="355" y="278">My</text>
+      <text x="650" y="278">Tour</text>
+    </g>
+  </g>
+</svg>
