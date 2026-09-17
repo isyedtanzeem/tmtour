@@ -13,7 +13,10 @@ import {
   PhoneCall,
   CheckCircle2,
   AlertCircle,
-  Mail
+  Mail,
+  Lock,
+  ArrowLeft,
+  MessageSquare
 } from 'lucide-react';
 import { GoogleSheetsConfig, ActiveTabType } from '../types';
 import { BUSINESS_INFO } from '../utils/formatters';
@@ -24,6 +27,8 @@ interface HeaderProps {
   sheetsConfig: GoogleSheetsConfig;
   onSyncClick: () => void;
   isSyncing: boolean;
+  isAdminAuthenticated?: boolean;
+  onExitAdmin?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,6 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
   sheetsConfig,
   onSyncClick,
   isSyncing,
+  isAdminAuthenticated = false,
+  onExitAdmin,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currency, setCurrency] = useState('INR (₹)');
@@ -83,14 +90,13 @@ export const Header: React.FC<HeaderProps> = ({
     }
     // Local fallback
     return (
-      <button
-        onClick={() => setActiveTab('admin')}
-        title="Admin Portal Database Active"
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 transition-colors"
+      <div
+        title="Local Database Active"
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-200 border border-slate-700"
       >
         <Database className="w-3 h-3 text-blue-400" />
         <span>Database Active</span>
-      </button>
+      </div>
     );
   };
 
@@ -216,26 +222,36 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Right CTA / Admin entry */}
+        {/* Right CTA / Action */}
         <div className="hidden md:flex items-center gap-3">
-          <button
-            onClick={() => setActiveTab('admin')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border transition-all ${
-              activeTab === 'admin'
-                ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400'
-            }`}
-          >
-            <Database className="w-4 h-4 text-blue-500" />
-            <span>Admin Portal</span>
-          </button>
+          {activeTab === 'admin' ? (
+            <button
+              onClick={onExitAdmin || (() => setActiveTab('home'))}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white transition-all shadow-xs cursor-pointer border border-slate-700"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-300" />
+              <span>Exit to Public Site</span>
+            </button>
+          ) : (
+            <>
+              <a
+                href={`https://wa.me/${BUSINESS_INFO.phoneRaw}?text=${encodeURIComponent('Hello TripMyTour, I would like to plan a holiday trip or visa.')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                <span>WhatsApp</span>
+              </a>
 
-          <button
-            onClick={() => setActiveTab('visas')}
-            className="px-4 py-2 rounded-lg text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-          >
-            Enquire for Visa
-          </button>
+              <button
+                onClick={() => setActiveTab('visas')}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              >
+                Enquire for Visa
+              </button>
+            </>
+          )}
         </div>
 
         {/* Mobile menu toggle */}
@@ -286,15 +302,19 @@ export const Header: React.FC<HeaderProps> = ({
             <Mail className="w-4 h-4 text-sky-500" />
             <span>Contact Us</span>
           </button>
-          <button
-            onClick={() => { setActiveTab('admin'); setMobileMenuOpen(false); }}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 ${
-              activeTab === 'admin' ? 'bg-slate-900 text-white font-semibold' : 'text-slate-800 bg-slate-100'
-            }`}
-          >
-            <Database className="w-4 h-4 text-blue-500" />
-            <span>Admin Portal</span>
-          </button>
+          {activeTab === 'admin' && (
+            <button
+              onClick={() => { 
+                if (onExitAdmin) onExitAdmin();
+                else setActiveTab('home'); 
+                setMobileMenuOpen(false); 
+              }}
+              className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold bg-slate-900 text-white flex items-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-300" />
+              <span>Exit to Public Site</span>
+            </button>
+          )}
         </div>
       )}
     </header>

@@ -100,4 +100,63 @@ export interface GoogleSheetsConfig {
   errorMessage: string | null;
 }
 
+export interface LeadEmailRecipient {
+  id: string;
+  email: string;
+  name: string;
+  receiveHolidayLeads: boolean;
+  receiveVisaLeads: boolean;
+  receiveContactLeads: boolean;
+  active: boolean;
+  createdAt: string;
+  notes?: string;
+}
+
+export interface LeadEmailSettings {
+  enabled: boolean;
+  recipients: LeadEmailRecipient[];
+  sendInstantAlert: boolean;
+  sendDailySummary: boolean;
+  senderDisplayName: string;
+  alertSubjectPrefix: string;
+  includeCustomerPhone: boolean;
+  includeCustomerEmail: boolean;
+  includeFullDetails: boolean;
+  updatedAt: string;
+}
+
+export interface LeadNotificationLog {
+  id: string;
+  timestamp: string;
+  type: 'holiday' | 'visa' | 'contact' | 'test';
+  leadReference: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  serviceTitle: string;
+  recipientEmails: string[];
+  status: 'Sent' | 'Delivered' | 'Failed';
+  messagePreview?: string;
+  error?: string;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  username: string;
+  name: string;
+  role: 'Super Admin' | 'Operations Manager';
+  lastLoginAt: string;
+  sessionExpiresAt?: string;
+}
+
+export interface SecurityAuditLog {
+  id: string;
+  timestamp: string;
+  action: 'LOGIN_SUCCESS' | 'LOGIN_FAILED' | 'LOGOUT' | 'PASSWORD_CHANGED' | 'PROFILE_UPDATED' | 'CREDENTIALS_RESET';
+  details: string;
+  ip?: string;
+  userAgent?: string;
+}
+
 export type ActiveTabType = 'home' | 'packages' | 'visas' | 'admin' | 'contact';

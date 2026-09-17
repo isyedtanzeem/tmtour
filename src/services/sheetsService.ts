@@ -1,5 +1,6 @@
 import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig } from '../types';
 import { DEFAULT_HOLIDAY_PACKAGES, DEFAULT_VISA_SERVICES } from '../data/initialData';
+import { leadEmailService } from './leadEmailService';
 
 const STORAGE_KEYS = {
   CONFIG: 'tripmytour_sheets_config_v2',
@@ -412,8 +413,16 @@ export class SheetsService {
     localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(list));
     this.notify();
 
-    // Background sync to remote Google Sheet if connected
-    this.postToGoogleSheet({ action: 'createBooking', data: booking });
+    // Trigger instant email notification to configured recipients
+    leadEmailService.dispatchHolidayLeadAlert(booking);
+
+    // Background sync to remote Google Sheet if connected (passes recipient emails for Apps Script email automation)
+    const notificationEmails = leadEmailService.getActiveRecipientsFor('holiday');
+    this.postToGoogleSheet({ 
+      action: 'createBooking', 
+      data: booking,
+      notificationEmails,
+    });
     return true;
   }
 
@@ -452,8 +461,16 @@ export class SheetsService {
     localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(list));
     this.notify();
 
-    // Background sync to remote Google Sheet if connected
-    this.postToGoogleSheet({ action: 'createVisaApplication', data: app });
+    // Trigger instant email notification to configured recipients
+    leadEmailService.dispatchVisaLeadAlert(app);
+
+    // Background sync to remote Google Sheet if connected (passes recipient emails for Apps Script email automation)
+    const notificationEmails = leadEmailService.getActiveRecipientsFor('visa');
+    this.postToGoogleSheet({ 
+      action: 'createVisaApplication', 
+      data: app,
+      notificationEmails,
+    });
     return true;
   }
 

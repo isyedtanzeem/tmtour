@@ -167,10 +167,10 @@ export const Footer: React.FC<FooterProps> = ({ setActiveTab }) => {
           </ul>
         </div>
 
-        {/* Connect & Admin */}
+        {/* Connect & Support */}
         <div>
           <h4 className="text-white font-bold uppercase tracking-wider text-xs mb-4">
-            Connect & Admin
+            Connect & Support
           </h4>
           <ul className="space-y-2.5">
             <li>
@@ -195,21 +195,34 @@ export const Footer: React.FC<FooterProps> = ({ setActiveTab }) => {
               </button>
             </li>
             <li>
-              <button onClick={() => setActiveTab('admin')} className="hover:text-white transition-colors text-blue-400 font-semibold">
-                Admin Console
+              <button onClick={() => setActiveTab('packages')} className="hover:text-white transition-colors">
+                Popular Tour Packages
               </button>
             </li>
             <li>
-              <button onClick={() => setActiveTab('admin')} className="hover:text-white transition-colors">
-                Travel Desk Portal
+              <button onClick={() => setActiveTab('visas')} className="hover:text-white transition-colors">
+                Visa Guidance Desk
               </button>
             </li>
           </ul>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 pt-8 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
-        <div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 pt-8 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500 select-none">
+        <div 
+          onClick={() => {
+            // Discrete triple click trigger for staff on mobile
+            const count = Number(sessionStorage.getItem('tmt_discrete_clicks') || 0) + 1;
+            sessionStorage.setItem('tmt_discrete_clicks', count.toString());
+            if (count >= 3) {
+              sessionStorage.removeItem('tmt_discrete_clicks');
+              setActiveTab('admin');
+            } else {
+              setTimeout(() => sessionStorage.removeItem('tmt_discrete_clicks'), 1500);
+            }
+          }}
+          className="cursor-default"
+        >
           © {new Date().getFullYear()} {BUSINESS_INFO.name} Travel & Visa Services. All rights reserved.
         </div>
         <div className="flex items-center gap-4">
@@ -217,9 +230,7 @@ export const Footer: React.FC<FooterProps> = ({ setActiveTab }) => {
           <span>•</span>
           <span>Bengaluru, Karnataka 560076</span>
           <span>•</span>
-          <button onClick={() => setActiveTab('admin')} className="text-blue-400 hover:underline">
-            Admin Login
-          </button>
+          <span>Govt. Reg. Travel Desk</span>
         </div>
       </div>
     </footer>

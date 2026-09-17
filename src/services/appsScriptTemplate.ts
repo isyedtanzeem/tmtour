@@ -87,9 +87,15 @@ function handleRequest(e) {
     }
     else if (action === "createBooking") {
       response.item = appendRecord(ss.getSheetByName(SHEET_BOOKINGS), postData.data);
+      if (postData.notificationEmails && postData.notificationEmails.length > 0) {
+        sendLeadEmailNotification(postData.notificationEmails, "Holiday Package Inquiry", postData.data);
+      }
     }
     else if (action === "createVisaApplication") {
       response.item = appendRecord(ss.getSheetByName(SHEET_APPLICATIONS), postData.data);
+      if (postData.notificationEmails && postData.notificationEmails.length > 0) {
+        sendLeadEmailNotification(postData.notificationEmails, "Visa Service Application", postData.data);
+      }
     }
     else if (action === "updateBookingStatus") {
       response.updated = updateRecordField(ss.getSheetByName(SHEET_BOOKINGS), postData.id, "status", postData.status);
@@ -265,6 +271,31 @@ function updateRecordField(sheet, id, fieldName, value) {
     }
   }
   return false;
+}
+
+function sendLeadEmailNotification(recipients, type, data) {
+  if (!recipients || !recipients.length || !data) return;
+  try {
+    var subject = "[TripMyTour Lead] 🚀 New " + type + ": " + (data.customerName || data.applicantName || "Customer");
+    var body = "Hello Team,\n\n" +
+      "A new customer lead has just arrived on TripMyTour:\n\n" +
+      "• Type: " + type + "\n" +
+      "• Customer / Applicant: " + (data.customerName || data.applicantName || "N/A") + "\n" +
+      "• Phone: " + (data.customerPhone || data.applicantPhone || "N/A") + "\n" +
+      "• Email: " + (data.customerEmail || data.applicantEmail || "N/A") + "\n" +
+      "• Service: " + (data.packageTitle || (data.country + " " + data.visaType) || "N/A") + "\n" +
+      "• Travel Date: " + (data.travelDate || "N/A") + "\n" +
+      "• Total Amount: ₹" + (data.totalPrice || data.totalAmount || "0") + "\n\n" +
+      "Please log in to your TripMyTour Admin Portal to review and follow up with the client promptly.";
+      
+    MailApp.sendEmail({
+      to: recipients.join(","),
+      subject: subject,
+      body: body
+    });
+  } catch (e) {
+    Logger.log("Lead notification note: " + e.toString());
+  }
 }
 
 function ensureTabsExist(ss) {

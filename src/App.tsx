@@ -26,21 +26,43 @@ import { PackageInquiryModal } from './components/PackageInquiryModal';
 import { VisaServicesList } from './components/VisaServicesList';
 import { VisaApplicationModal } from './components/VisaApplicationModal';
 import { AdminPortal } from './components/AdminPortal';
+import { AdminLoginGate } from './components/AdminLoginGate';
 import { ContactFormPage } from './components/ContactFormPage';
 import { FloatingMobileContact } from './components/FloatingMobileContact';
 import { PackageCard } from './components/PackageCard';
 import { Footer } from './components/Footer';
 import { sheetsService } from './services/sheetsService';
-import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig, ActiveTabType } from './types';
+import { adminAuthService } from './services/adminAuthService';
+import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig, ActiveTabType, AdminUser } from './types';
 import { formatCurrency, BUSINESS_INFO, getPackageWhatsAppUrl, getVisaWhatsAppUrl } from './utils/formatters';
 
+const checkUrlForAdmin = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const path = window.location.pathname.toLowerCase();
+    const search = window.location.search.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
+    return (
+      path.startsWith('/admin') ||
+      search.includes('admin') ||
+      search.includes('portal=admin') ||
+      hash.includes('admin')
+    );
+  } catch (err) {
+    return false;
+  }
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTabType>('home');
+  const [activeTab, setActiveTab] = useState<ActiveTabType>(() => {
+    return checkUrlForAdmin() ? 'admin' : 'home';
+  });
   const [packages, setPackages] = useState<HolidayPackage[]>([]);
   const [visas, setVisas] = useState<VisaService[]>([]);
   const [bookings, setBookings] = useState<BookingInquiry[]>([]);
   const [applications, setApplications] = useState<VisaApplication[]>([]);
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(sheetsService.getConfig());
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(() => adminAuthService.getCurrentUser());
   
   // Modals & Selected states
   const [selectedPackage, setSelectedPackage] = useState<HolidayPackage | null>(null);
@@ -62,12 +84,80 @@ export default function App() {
     }, 4000);
   };
 
+  const handleExitAdmin = () => {
+    setActiveTab('home');
+    try {
+      window.history.pushState(null, '', '/');
+    } catch (e) {
+      // fallback
+    }
+    showToast('Returned to public website');
+  };
+
   const loadData = useCallback(() => {
     setPackages(sheetsService.getPackages());
     setVisas(sheetsService.getVisas());
     setBookings(sheetsService.getBookings());
     setApplications(sheetsService.getApplications());
     setSheetsConfig(sheetsService.getConfig());
+  }, []);
+
+  // Listen to popstate and hashchange for direct URL routing
+  useEffect(() => {
+    const handleUrlChange = () => {
+      if (checkUrlForAdmin()) {
+        setActiveTab('admin');
+      } else if (activeTab === 'admin') {
+        setActiveTab('home');
+      }
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, [activeTab]);
+
+  // Sync address bar when on admin tab so direct URL can be copied/shared by admin
+  useEffect(() => {
+    if (activeTab === 'admin') {
+      const search = window.location.search;
+      const path = window.location.pathname;
+      const hash = window.location.hash;
+      const alreadyHasAdmin = path.startsWith('/admin') || search.includes('admin') || hash.includes('admin');
+      if (!alreadyHasAdmin) {
+        try {
+          window.history.pushState(null, '', '/?admin=true');
+        } catch (e) {}
+      }
+    }
+  }, [activeTab]);
+
+  // Global staff shortcut: Ctrl + Shift + A (or Cmd + Shift + A)
+  useEffect(() => {
+    const handleShortcut = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        setActiveTab((prev) => {
+          const next = prev === 'admin' ? 'home' : 'admin';
+          if (next === 'admin') {
+            try {
+              window.history.pushState(null, '', '/?admin=true');
+            } catch (e) {}
+            showToast('Admin Portal accessed (Staff shortcut)');
+          } else {
+            try {
+              window.history.pushState(null, '', '/');
+            } catch (e) {}
+            showToast('Returned to public website');
+          }
+          return next;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
   }, []);
 
   useEffect(() => {
@@ -81,6 +171,12 @@ export default function App() {
         console.log('Synchronized successfully with Google Sheets backend.');
       }
     });
+
+    const unsubAuth = adminAuthService.subscribe(() => {
+      setAdminUser(adminAuthService.getCurrentUser());
+    });
+
+    return () => unsubAuth();
   }, [loadData]);
 
   const handleSearchPackages = (destination: string, category: string) => {
@@ -128,6 +224,8 @@ export default function App() {
         sheetsConfig={sheetsConfig}
         onSyncClick={handleManualSync}
         isSyncing={sheetsConfig.syncStatus === 'syncing'}
+        isAdminAuthenticated={!!adminUser}
+        onExitAdmin={handleExitAdmin}
       />
 
       {/* Main Body content according to active tab */}
@@ -389,14 +487,35 @@ export default function App() {
         {/* TAB: ADMIN PORTAL */}
         {/* ========================================================= */}
         {activeTab === 'admin' && (
-          <AdminPortal
-            packages={packages}
-            visas={visas}
-            bookings={bookings}
-            applications={applications}
-            sheetsConfig={sheetsConfig}
-            onRefresh={loadData}
-          />
+          !adminUser ? (
+            <AdminLoginGate
+              onLoginSuccess={(user) => {
+                setAdminUser(user);
+                showToast(`Authenticated as ${user.name}`);
+              }}
+              onBackToSite={handleExitAdmin}
+            />
+          ) : (
+            <AdminPortal
+              packages={packages}
+              visas={visas}
+              bookings={bookings}
+              applications={applications}
+              sheetsConfig={sheetsConfig}
+              onRefresh={loadData}
+              currentUser={adminUser}
+              onLogout={() => {
+                adminAuthService.logout();
+                setAdminUser(null);
+                showToast('Admin logged out. Terminal locked.');
+              }}
+              onProfileUpdated={(user) => {
+                setAdminUser(user);
+                showToast('Admin profile saved successfully.');
+              }}
+              onExitToSite={handleExitAdmin}
+            />
+          )
         )}
       </main>
 
@@ -437,11 +556,13 @@ export default function App() {
         />
       )}
 
-      {/* Global Footer */}
-      <Footer setActiveTab={setActiveTab} />
+      {/* Global Footer (shown on public site, hidden when staff is in admin portal) */}
+      {activeTab !== 'admin' && <Footer setActiveTab={setActiveTab} />}
 
-      {/* Floating Direct Call & WhatsApp Action for Mobile & Desktop */}
-      <FloatingMobileContact onOpenContactPage={() => setActiveTab('contact')} />
+      {/* Floating Direct Call & WhatsApp Action for Mobile & Desktop (hidden in admin portal) */}
+      {activeTab !== 'admin' && (
+        <FloatingMobileContact onOpenContactPage={() => setActiveTab('contact')} />
+      )}
     </div>
   );
 }
