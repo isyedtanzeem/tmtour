@@ -158,6 +158,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [webAppUrlInput, setWebAppUrlInput] = useState(sheetsConfig.webAppUrl);
   const [sheetIdInput, setSheetIdInput] = useState(sheetsConfig.sheetId);
   const [testingConnection, setTestingConnection] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [copiedScript, setCopiedScript] = useState(false);
 
@@ -243,6 +244,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     const res = await sheetsService.testConnection(cleanUrl);
     setTestResult(res);
     setTestingConnection(false);
+  };
+
+  const handleTestEmail = async () => {
+    const cleanUrl = webAppUrlInput.trim();
+    if (!cleanUrl) {
+      setTestResult({ success: false, message: 'Please enter a Google Apps Script Web App URL first.' });
+      return;
+    }
+    setTestingEmail(true);
+    setTestResult(null);
+    const res = await sheetsService.testAppsScriptEmail(cleanUrl);
+    setTestResult(res);
+    setTestingEmail(false);
   };
 
   const handleCopyScript = () => {
@@ -963,14 +977,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <button
                     type="button"
                     onClick={handleTestConnection}
-                    disabled={testingConnection}
+                    disabled={testingConnection || testingEmail}
                     className="px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs shrink-0 transition-colors"
                   >
                     {testingConnection ? 'Testing...' : 'Test Ping'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleTestEmail}
+                    disabled={testingConnection || testingEmail}
+                    className="px-4 py-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs shrink-0 border border-blue-200 transition-colors flex items-center gap-1.5"
+                    title="Sends an instant test lead email via Google Apps Script"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-blue-600" />
+                    <span>{testingEmail ? 'Sending...' : 'Test Email Alert'}</span>
+                  </button>
                 </div>
                 <span className="text-[11px] text-slate-400 mt-1 block">
-                  Must be deployed with "Who has access: Anyone" so the client can post bookings and fetch tours.
+                  Must be deployed with "Execute as: Me" and "Who has access: Anyone". Email notifications are sent automatically using Google's MailApp!
                 </span>
 
                 {sheetsService.isGoogleSpreadsheetUrl(webAppUrlInput) && (
@@ -1080,35 +1104,45 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </button>
             </div>
 
-            {/* Quick 3-step Instructions */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-1">
-                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center mb-2">
+            {/* Quick 4-step Instructions */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1">
+                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center mb-1.5">
                   1
                 </div>
                 <div className="font-bold text-slate-900">Open Apps Script</div>
-                <div className="text-slate-500">
+                <div className="text-slate-500 text-[11px]">
                   In your Google Sheet, click <strong className="text-slate-800">Extensions → Apps Script</strong>.
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-1">
-                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center mb-2">
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1">
+                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center mb-1.5">
                   2
                 </div>
                 <div className="font-bold text-slate-900">Paste Code & Save</div>
-                <div className="text-slate-500">
-                  Replace all content in <code className="text-blue-600">Code.gs</code> with the copied script, then save.
+                <div className="text-slate-500 text-[11px]">
+                  Paste this script into <code className="text-blue-600">Code.gs</code> and click Save.
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-1">
-                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center mb-2">
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1">
+                <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[11px] flex items-center justify-center mb-1.5">
                   3
                 </div>
+                <div className="font-bold text-slate-900">Test Email (Optional)</div>
+                <div className="text-slate-500 text-[11px]">
+                  Select <code className="text-emerald-700 font-mono">testEmailNotification</code> and click Run to verify inbox delivery.
+                </div>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1">
+                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center mb-1.5">
+                  4
+                </div>
                 <div className="font-bold text-slate-900">Deploy as Web App</div>
-                <div className="text-slate-500">
-                  Click <strong className="text-slate-800">Deploy → New Deployment → Web app</strong>. Choose Execute as: <strong>Me</strong>, Access: <strong>Anyone</strong>.
+                <div className="text-slate-500 text-[11px]">
+                  Deploy → New Deployment → Web app (Execute as: <strong>Me</strong>, Access: <strong>Anyone</strong>).
                 </div>
               </div>
             </div>

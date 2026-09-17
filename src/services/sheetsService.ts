@@ -240,6 +240,35 @@ export class SheetsService {
     }
   }
 
+  public async testAppsScriptEmail(targetUrl?: string): Promise<{ success: boolean; message: string }> {
+    const rawUrl = (targetUrl || this.config.webAppUrl || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      return { success: false, message: 'Please provide a valid Apps Script Web App URL ending in /exec.' };
+    }
+    try {
+      const notificationEmails = leadEmailService.getActiveRecipientsFor('holiday');
+      const response = await fetch(rawUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'testEmail',
+          notificationEmails,
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      return {
+        success: data.success ?? true,
+        message: data.message || 'Test email dispatched successfully via Google Apps Script!',
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        message: `Failed to trigger test email: ${e.message || 'Network error'}`,
+      };
+    }
+  }
+
   public async syncWithGoogleSheets(): Promise<{ success: boolean; message?: string }> {
     if (!this.config.webAppUrl || !this.config.isCustomUrlActive || !this.isValidWebAppUrl(this.config.webAppUrl)) {
       this.config.syncStatus = 'local_fallback';
