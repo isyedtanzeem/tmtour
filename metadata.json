@@ -1,6 +1,6 @@
 {
   "name": "TripMyTour",
-  "description": "TripMyTour - Curated domestic & international tour packages, fast-track visa processing, and dedicated travel concierge assistance.",
+  "description": "Curated domestic India holidays, international tour packages, and expedited tourist visa services with verified travel desk assistance.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -31,18 +31,35 @@ export const HolidayPackagesList: React.FC<HolidayPackagesListProps> = ({
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'rating' | 'duration'>('featured');
 
+  React.useEffect(() => {
+    setSearchQuery(initialSearchQuery);
+  }, [initialSearchQuery]);
+
+  React.useEffect(() => {
+    setSelectedCategory(initialCategory);
+  }, [initialCategory]);
+
   const categories = ['All', 'Domestic', 'International', 'Honeymoon', 'Luxury', 'Budget'];
 
   const filteredPackages = useMemo(() => {
     let result = packages.filter((pkg) => {
+      const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
-        searchQuery === '' ||
-        pkg.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        pkg.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        pkg.country.toLowerCase().includes(searchQuery.toLowerCase());
+        q === '' ||
+        pkg.title.toLowerCase().includes(q) ||
+        pkg.destination.toLowerCase().includes(q) ||
+        pkg.country.toLowerCase().includes(q) ||
+        (q === 'india' && (pkg.country.toLowerCase() === 'india' || pkg.category === 'Domestic')) ||
+        (q === 'domestic' && (pkg.country.toLowerCase() === 'india' || pkg.category === 'Domestic'));
 
-      const matchesCategory =
-        selectedCategory === 'All' || pkg.category === selectedCategory;
+      let matchesCategory = true;
+      if (selectedCategory === 'Domestic') {
+        matchesCategory = pkg.category === 'Domestic' || pkg.country.toLowerCase() === 'india';
+      } else if (selectedCategory === 'International') {
+        matchesCategory = pkg.category === 'International' || (pkg.country.toLowerCase() !== 'india' && pkg.category !== 'Domestic');
+      } else if (selectedCategory !== 'All') {
+        matchesCategory = pkg.category.toLowerCase() === selectedCategory.toLowerCase();
+      }
 
       return matchesSearch && matchesCategory;
     });

@@ -16,7 +16,8 @@ import {
   HeartHandshake,
   Mail,
   MessageCircle,
-  ChevronRight
+  ChevronRight,
+  Palmtree
 } from 'lucide-react';
 import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
@@ -30,6 +31,8 @@ import { AdminLoginGate } from './components/AdminLoginGate';
 import { ContactFormPage } from './components/ContactFormPage';
 import { FloatingMobileContact } from './components/FloatingMobileContact';
 import { PackageCard } from './components/PackageCard';
+import { TravelFAQ } from './components/TravelFAQ';
+import { SEOHead } from './components/SEOHead';
 import { Footer } from './components/Footer';
 import { sheetsService } from './services/sheetsService';
 import { adminAuthService } from './services/adminAuthService';
@@ -209,6 +212,15 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
+      {/* Dynamic SEO Head Management */}
+      <SEOHead
+        activeTab={activeTab}
+        selectedPackage={selectedPackage}
+        selectedVisa={selectedVisa}
+        searchQuery={packageSearchQuery}
+        categoryFilter={packageCategory}
+      />
+
       {/* Global Toast Notification */}
       {toastMessage && (
         <div className="fixed top-5 right-5 z-50 max-w-sm bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-3 animate-in slide-in-from-top-4 duration-300">
@@ -243,41 +255,89 @@ export default function App() {
               setActiveTab={setActiveTab}
             />
 
-            {/* Featured Holiday Packages Preview */}
+            {/* Incredible India: Curated Domestic Holidays Section */}
+            <section className="py-16 px-4 sm:px-8 max-w-7xl mx-auto border-b border-slate-200/80">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-3 py-1 rounded-full mb-2 border border-orange-100">
+                    <Palmtree className="w-3.5 h-3.5" />
+                    <span>Incredible India Domestic Holidays</span>
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                    Curated Domestic Holiday Packages
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                    Handcrafted escapes across India with verified 4★/5★ stays, private chauffeured vehicles, and local experiences.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    handleSearchPackages('', 'Domestic');
+                  }}
+                  className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-orange-600 hover:text-orange-700 hover:gap-3 transition-all cursor-pointer"
+                >
+                  <span>Explore All Domestic Holidays</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Domestic Packages Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {packages
+                  .filter((p) => p.category === 'Domestic' || p.country.toLowerCase() === 'india')
+                  .slice(0, 3)
+                  .map((pkg) => (
+                    <PackageCard
+                      key={pkg.id}
+                      pkg={pkg}
+                      onSelectPackage={setSelectedPackage}
+                      onContactPackage={handleContactPackage}
+                    />
+                  ))}
+              </div>
+            </section>
+
+            {/* Featured International Holiday Packages Preview */}
             <section className="py-16 px-4 sm:px-8 max-w-7xl mx-auto">
               <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
                 <div>
-                  <div className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-3 py-1 rounded-full mb-2">
+                  <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-3 py-1 rounded-full mb-2 border border-blue-100">
                     <Compass className="w-3.5 h-3.5" />
-                    <span>Trending Escapes</span>
+                    <span>Global Destinations</span>
                   </div>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                     Featured International Tour Packages
                   </h2>
                   <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                    All-inclusive trips with guaranteed 4★/5★ accommodations and verified itineraries.
+                    All-inclusive trips with guaranteed 4★/5★ accommodations, guided excursions, and visa assistance.
                   </p>
                 </div>
 
                 <button
-                  onClick={() => setActiveTab('packages')}
-                  className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-blue-600 hover:text-blue-700 hover:gap-3 transition-all"
+                  onClick={() => {
+                    handleSearchPackages('', 'International');
+                  }}
+                  className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-blue-600 hover:text-blue-700 hover:gap-3 transition-all cursor-pointer"
                 >
-                  <span>Explore All {packages.length} Tours</span>
+                  <span>Explore All International Tours</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* 3 Featured Packages */}
+              {/* International Packages Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {packages.slice(0, 3).map((pkg) => (
-                  <PackageCard
-                    key={pkg.id}
-                    pkg={pkg}
-                    onSelectPackage={setSelectedPackage}
-                    onContactPackage={handleContactPackage}
-                  />
-                ))}
+                {packages
+                  .filter((p) => p.category !== 'Domestic' && p.country.toLowerCase() !== 'india')
+                  .slice(0, 3)
+                  .map((pkg) => (
+                    <PackageCard
+                      key={pkg.id}
+                      pkg={pkg}
+                      onSelectPackage={setSelectedPackage}
+                      onContactPackage={handleContactPackage}
+                    />
+                  ))}
               </div>
             </section>
 
@@ -440,6 +500,9 @@ export default function App() {
                 </div>
               </div>
             </section>
+
+            {/* Comprehensive SEO-Optimized Travel & Visa FAQ Section */}
+            <TravelFAQ />
           </div>
         )}
 

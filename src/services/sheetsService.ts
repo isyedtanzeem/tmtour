@@ -107,8 +107,21 @@ export class SheetsService {
 
   private ensureInitialData(): void {
     try {
-      if (!localStorage.getItem(STORAGE_KEYS.PACKAGES)) {
+      const existingPackagesRaw = localStorage.getItem(STORAGE_KEYS.PACKAGES);
+      if (!existingPackagesRaw) {
         localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(DEFAULT_HOLIDAY_PACKAGES));
+      } else {
+        try {
+          const parsed: HolidayPackage[] = JSON.parse(existingPackagesRaw);
+          const existingIds = new Set(parsed.map((p) => p.id));
+          const missing = DEFAULT_HOLIDAY_PACKAGES.filter((p) => !existingIds.has(p.id));
+          if (missing.length > 0) {
+            const merged = [...parsed, ...missing];
+            localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(merged));
+          }
+        } catch (e) {
+          localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(DEFAULT_HOLIDAY_PACKAGES));
+        }
       }
       if (!localStorage.getItem(STORAGE_KEYS.VISAS)) {
         localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(DEFAULT_VISA_SERVICES));
