@@ -7,7 +7,7 @@ export const BUSINESS_INFO = {
   phone: '098803 71756',
   phoneInternational: '+91 98803 71756',
   phoneRaw: '919880371756',
-  email: 'contact@tripmytour.com',
+  email: 'lead.tripmytour2026@gmail.com',
   address: 'Nextcoworks, Ranka Colony Rd, Munivenkatppa Layout, BTM Layout 2nd Stage, Bilekahalli, Bengaluru, Karnataka 560076',
   shortAddress: 'BTM Layout 2nd Stage, Bengaluru, Karnataka 560076',
   city: 'Bengaluru',

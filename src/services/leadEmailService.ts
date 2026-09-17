@@ -10,19 +10,20 @@ const DEFAULT_SETTINGS: LeadEmailSettings = {
   recipients: [
     {
       id: 'rec-primary-1',
-      email: 'isyedtanzeem@gmail.com',
+      email: 'lead.tripmytour2026@gmail.com',
       name: 'Operations & Sales Desk',
       receiveHolidayLeads: true,
       receiveVisaLeads: true,
       receiveContactLeads: true,
       active: true,
-      createdAt: '2026-09-14T10:00:00.000Z',
+      createdAt: '2026-09-17T00:00:00.000Z',
       notes: 'Primary recipient for all incoming holiday bookings & visa applications',
     },
   ],
   sendInstantAlert: true,
   sendDailySummary: false,
   senderDisplayName: 'TripMyTour Leads Bot',
+  senderEmail: 'lead.tripmytour2026@gmail.com',
   alertSubjectPrefix: '[TripMyTour Lead]',
   includeCustomerPhone: true,
   includeCustomerEmail: true,
@@ -64,13 +65,34 @@ export class LeadEmailService {
       const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
       if (stored) {
         const parsed = JSON.parse(stored);
+        let recipients = Array.isArray(parsed.recipients) && parsed.recipients.length > 0
+          ? parsed.recipients
+          : DEFAULT_SETTINGS.recipients;
+
+        // Auto-migrate old emails if present
+        recipients = recipients.map((r: LeadEmailRecipient) => {
+          if (r.email === 'isyedtanzeem@gmail.com' || r.email === 'tripmytour@gmail.com') {
+            return {
+              ...r,
+              email: 'lead.tripmytour2026@gmail.com',
+            };
+          }
+          return r;
+        });
+
+        // Ensure lead.tripmytour2026@gmail.com is present in recipients
+        const hasPrimary = recipients.some((r: LeadEmailRecipient) => r.email.toLowerCase() === 'lead.tripmytour2026@gmail.com');
+        if (!hasPrimary) {
+          recipients.unshift(DEFAULT_SETTINGS.recipients[0]);
+        }
+
         this.settings = {
           ...DEFAULT_SETTINGS,
           ...parsed,
-          recipients: Array.isArray(parsed.recipients) && parsed.recipients.length > 0
-            ? parsed.recipients
-            : DEFAULT_SETTINGS.recipients,
+          senderEmail: 'lead.tripmytour2026@gmail.com',
+          recipients,
         };
+        this.persistSettings();
       } else {
         this.settings = { ...DEFAULT_SETTINGS };
         this.persistSettings();

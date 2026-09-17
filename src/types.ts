@@ -118,6 +118,7 @@ export interface LeadEmailSettings {
   sendInstantAlert: boolean;
   sendDailySummary: boolean;
   senderDisplayName: string;
+  senderEmail?: string;
   alertSubjectPrefix: string;
   includeCustomerPhone: boolean;
   includeCustomerEmail: boolean;

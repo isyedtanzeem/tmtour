@@ -35,8 +35,7 @@ export const GOOGLE_APPS_SCRIPT_CODE = `/**
 
 // Fallback email address(es) if none are sent by the frontend (comma-separated):
 var DEFAULT_NOTIFICATION_EMAILS = [
-  "tripmytour@gmail.com",
-  "isyedtanzeem@gmail.com"
+  "lead.tripmytour2026@gmail.com"
 ];
 
 // Send instant confirmation email to customer when they submit an inquiry:
@@ -47,7 +46,7 @@ var COMPANY_NAME = "TripMyTour";
 var COMPANY_TAGLINE = "Domestic Holidays, International Tours & Fast-Track Visas";
 var COMPANY_PHONE = "+91 98803 71756";
 var COMPANY_PHONE_RAW = "919880371756";
-var COMPANY_EMAIL = "tripmytour@gmail.com";
+var COMPANY_EMAIL = "lead.tripmytour2026@gmail.com";
 var COMPANY_ADDRESS = "Indiranagar / MG Road, Bengaluru, Karnataka 560001";
 var COMPANY_WEBSITE = "https://tripmytour.com";
 
@@ -244,7 +243,7 @@ function sendHolidayLeadNotification(recipients, data, sheetUrl) {
     var subject = "[TripMyTour Lead] 🌴 New Holiday Inquiry: " + customerName + " (" + packageTitle + ")";
     
     var htmlBody = ""
-      + "<div style='font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);'>"
+      + "<div style='font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);'>"
       + "  <div style='background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);padding:28px 24px;color:#ffffff;text-align:left;'>"
       + "    <div style='display:inline-block;background:rgba(255,255,255,0.15);padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;color:#93c5fd;'>★ NEW HOLIDAY INQUIRY</div>"
       + "    <h1 style='margin:0;font-size:22px;font-weight:800;color:#ffffff;line-height:1.3;'>" + customerName + "</h1>"
@@ -296,7 +295,9 @@ function sendHolidayLeadNotification(recipients, data, sheetUrl) {
       to: recipients.join(","),
       subject: subject,
       body: plainBody,
-      htmlBody: htmlBody
+      htmlBody: htmlBody,
+      name: COMPANY_NAME + " Holiday Leads",
+      replyTo: COMPANY_EMAIL
     });
     
     return true;
@@ -328,7 +329,7 @@ function sendVisaLeadNotification(recipients, data, sheetUrl) {
     var subject = "[TripMyTour Lead] 🛂 New Visa Application: " + applicantName + " (" + country + " " + visaType + ")";
     
     var htmlBody = ""
-      + "<div style='font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);'>"
+      + "<div style='font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);'>"
       + "  <div style='background:linear-gradient(135deg,#064e3b 0%,#047857 100%);padding:28px 24px;color:#ffffff;text-align:left;'>"
       + "    <div style='display:inline-block;background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;color:#a7f3d0;'>★ NEW VISA APPLICATION</div>"
       + "    <h1 style='margin:0;font-size:22px;font-weight:800;color:#ffffff;line-height:1.3;'>" + applicantName + "</h1>"
@@ -376,7 +377,9 @@ function sendVisaLeadNotification(recipients, data, sheetUrl) {
       to: recipients.join(","),
       subject: subject,
       body: plainBody,
-      htmlBody: htmlBody
+      htmlBody: htmlBody,
+      name: COMPANY_NAME + " Visa Leads",
+      replyTo: COMPANY_EMAIL
     });
     
     return true;
@@ -394,7 +397,7 @@ function sendCustomerHolidayConfirmation(data) {
   try {
     var subject = "Thank you for contacting " + COMPANY_NAME + " - Request Received [Ref: " + (data.id || "") + "]";
     var htmlBody = ""
-      + "<div style='font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;max-width:580px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;'>"
+      + "<div style='font-family:Arial,Helvetica,sans-serif;max-width:580px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;'>"
       + "  <div style='background:#0f172a;padding:24px;color:#ffffff;text-align:center;'>"
       + "    <h2 style='margin:0;font-size:20px;font-weight:800;color:#ffffff;'>" + COMPANY_NAME + "</h2>"
       + "    <p style='margin:4px 0 0 0;font-size:12px;color:#94a3b8;'>" + COMPANY_TAGLINE + "</p>"
@@ -420,7 +423,9 @@ function sendCustomerHolidayConfirmation(data) {
       to: data.customerEmail,
       subject: subject,
       body: "Hello " + (data.customerName || "Traveler") + ", thank you for inquiring about " + (data.packageTitle || "Holiday Package") + " with " + COMPANY_NAME + ". We have received your request (Ref: " + (data.id || "") + ") and our itinerary specialist will connect with you shortly on WhatsApp / phone.",
-      htmlBody: htmlBody
+      htmlBody: htmlBody,
+      name: COMPANY_NAME + " Travel Desk",
+      replyTo: COMPANY_EMAIL
     });
   } catch (e) {
     Logger.log("sendCustomerHolidayConfirmation note: " + e.toString());
@@ -435,7 +440,7 @@ function sendCustomerVisaConfirmation(data) {
   try {
     var subject = "Visa Application Received - " + (data.country || "Visa") + " [Ref: " + (data.referenceNumber || data.id || "") + "]";
     var htmlBody = ""
-      + "<div style='font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;max-width:580px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;'>"
+      + "<div style='font-family:Arial,Helvetica,sans-serif;max-width:580px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;'>"
       + "  <div style='background:#064e3b;padding:24px;color:#ffffff;text-align:center;'>"
       + "    <h2 style='margin:0;font-size:20px;font-weight:800;color:#ffffff;'>" + COMPANY_NAME + " Visa Desk</h2>"
       + "    <p style='margin:4px 0 0 0;font-size:12px;color:#a7f3d0;'>Verified Embassy Filing & Document Review</p>"
@@ -460,7 +465,9 @@ function sendCustomerVisaConfirmation(data) {
       to: data.applicantEmail,
       subject: subject,
       body: "Hello " + (data.applicantName || "Applicant") + ", thank you for choosing " + COMPANY_NAME + " for your " + (data.country || "") + " visa application. Your reference number is " + (data.referenceNumber || data.id || "") + ". Our visa officer will review your documents shortly.",
-      htmlBody: htmlBody
+      htmlBody: htmlBody,
+      name: COMPANY_NAME + " Visa Services",
+      replyTo: COMPANY_EMAIL
     });
   } catch (e) {
     Logger.log("sendCustomerVisaConfirmation note: " + e.toString());

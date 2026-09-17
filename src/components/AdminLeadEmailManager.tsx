@@ -360,7 +360,7 @@ export const AdminLeadEmailManager: React.FC = () => {
                     <input
                       type="email"
                       required
-                      placeholder="e.g. leads@tripmytour.com"
+                      placeholder="e.g. lead.tripmytour2026@gmail.com"
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
@@ -809,7 +809,7 @@ export const AdminLeadEmailManager: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-400 w-12 text-right">From:</span>
                 <span className="font-medium text-slate-800">
-                  {senderName} &lt;alerts@tripmytour.com&gt;
+                  {senderName} &lt;{settings.senderEmail || 'lead.tripmytour2026@gmail.com'}&gt;
                 </span>
               </div>
               <div className="flex items-center gap-2">
