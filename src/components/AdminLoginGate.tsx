@@ -8,13 +8,8 @@ import {
   EyeOff, 
   AlertTriangle, 
   ArrowLeft, 
-  Sparkles, 
-  CheckCircle2,
-  Clock,
   Building,
-  Terminal,
-  RefreshCw,
-  Copy
+  RefreshCw
 } from 'lucide-react';
 import { adminAuthService } from '../services/adminAuthService';
 import { AdminUser } from '../types';
@@ -29,21 +24,13 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
   onLoginSuccess,
   onBackToSite,
 }) => {
-  const [identifier, setIdentifier] = useState('admin@tripmytour.com');
-  const [password, setPassword] = useState('admin');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lockoutTimer, setLockoutTimer] = useState<number>(0);
-  const [copiedUrl, setCopiedUrl] = useState(false);
-
-  const handleCopyDirectUrl = () => {
-    const url = `${window.location.origin}/?admin=true`;
-    navigator.clipboard.writeText(url);
-    setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2500);
-  };
 
   // Check lockout on mount and tick
   useEffect(() => {
@@ -60,12 +47,6 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
     const interval = setInterval(checkLockout, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  const handleFillDemo = (username: string, pass: string) => {
-    setIdentifier(username);
-    setPassword(pass);
-    setErrorMessage(null);
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,7 +166,7 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
                     type="text"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="admin@tripmytour.com or admin"
+                    placeholder="Enter admin username or email"
                     disabled={lockoutTimer > 0 || isSubmitting}
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 font-medium placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-60"
                     required
@@ -199,7 +180,6 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Password
                   </label>
-                  <span className="text-[11px] text-slate-400 font-medium">Default: admin</span>
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -209,7 +189,7 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter admin password"
+                    placeholder="Enter password"
                     disabled={lockoutTimer > 0 || isSubmitting}
                     className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 font-medium placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-60 font-mono"
                     required
@@ -258,75 +238,6 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
                 )}
               </button>
             </form>
-
-            {/* Quick Demo Fill Helper */}
-            <div className="pt-4 border-t border-slate-200/80">
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Default Admin Credentials:</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleFillDemo('admin@tripmytour.com', 'admin')}
-                    className="text-blue-600 hover:text-blue-800 font-bold hover:underline cursor-pointer"
-                  >
-                    Auto-fill
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
-                  <div className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
-                    <span className="text-slate-400 block text-[9px] uppercase font-sans font-bold">User</span>
-                    <span className="text-slate-800 font-semibold truncate block">admin@tripmytour.com</span>
-                  </div>
-                  <div className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
-                    <span className="text-slate-400 block text-[9px] uppercase font-sans font-bold">Password</span>
-                    <span className="text-slate-800 font-semibold block">admin</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Discrete Staff Access instructions */}
-              <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-3.5 space-y-2.5 text-xs text-blue-900">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold flex items-center gap-1.5 text-[11px] text-blue-950">
-                    <Terminal className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Private Staff Access Methods</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleCopyDirectUrl}
-                    className="text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-white px-2.5 py-1 rounded-lg border border-blue-200 hover:border-blue-300 transition-colors flex items-center gap-1 cursor-pointer"
-                  >
-                    {copiedUrl ? (
-                      <>
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        <span className="text-emerald-700">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        <span>Copy Link</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-                <p className="text-[11px] text-blue-800 leading-relaxed">
-                  All public links have been removed from the website. Staff can hit this terminal anytime via:
-                </p>
-                <div className="space-y-1 font-mono text-[11px]">
-                  <div className="bg-white/80 px-2 py-1 rounded border border-blue-100 flex items-center justify-between">
-                    <span className="text-blue-900 font-semibold">Direct URL:</span>
-                    <span className="text-slate-600 font-bold truncate max-w-[200px]">{window.location.origin}/?admin=true</span>
-                  </div>
-                  <div className="bg-white/80 px-2 py-1 rounded border border-blue-100 flex items-center justify-between">
-                    <span className="text-blue-900 font-semibold">Shortcut:</span>
-                    <span className="text-slate-700 font-bold">Ctrl + Shift + A</span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Card Footer Security note */}
