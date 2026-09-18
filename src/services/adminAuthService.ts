@@ -1,19 +1,85 @@
-import { AdminUser, SecurityAuditLog } from '../types';
+import { AdminUser, AdminRole, ModulePermissions, SecurityAuditLog } from '../types';
 
 const CREDENTIALS_KEY = 'tripmytour_admin_credentials';
+const USERS_STORAGE_KEY = 'tripmytour_admin_users_v2';
 const SESSION_LOCAL_KEY = 'tripmytour_admin_session';
 const SESSION_SESSION_KEY = 'tripmytour_admin_session_transient';
 const LOCKOUT_KEY = 'tripmytour_admin_lockout';
 const AUDIT_LOGS_KEY = 'tripmytour_admin_audit_logs';
 
-const DEFAULT_ADMIN = {
-  username: 'admin',
-  email: 'admin@tripmytour.com',
-  password: 'admin',
-  alternatePassword: 'admin123',
-  name: 'Operations Lead',
-  role: 'Super Admin' as const,
+export const DEFAULT_PERMISSIONS: Record<AdminRole, ModulePermissions> = {
+  'Super Admin': {
+    packages: { view: true, manage: true },
+    visas: { view: true, manage: true },
+    leads: { view: true, manageStatus: true, delete: true },
+    databaseSync: { view: true, manage: true },
+    emailAlerts: { view: true, manage: true },
+    branding: { manage: true },
+    userManagement: { manage: true },
+  },
+  'Operations Manager': {
+    packages: { view: true, manage: true },
+    visas: { view: true, manage: true },
+    leads: { view: true, manageStatus: true, delete: false },
+    databaseSync: { view: true, manage: true },
+    emailAlerts: { view: true, manage: false },
+    branding: { manage: true },
+    userManagement: { manage: false },
+  },
+  'Lead Specialist': {
+    packages: { view: true, manage: false },
+    visas: { view: true, manage: false },
+    leads: { view: true, manageStatus: true, delete: false },
+    databaseSync: { view: false, manage: false },
+    emailAlerts: { view: false, manage: false },
+    branding: { manage: false },
+    userManagement: { manage: false },
+  },
+  'Custom Staff': {
+    packages: { view: false, manage: false },
+    visas: { view: false, manage: false },
+    leads: { view: true, manageStatus: false, delete: false },
+    databaseSync: { view: false, manage: false },
+    emailAlerts: { view: false, manage: false },
+    branding: { manage: false },
+    userManagement: { manage: false },
+  },
 };
+
+export const VIEW_ONLY_LEADS_PERMISSIONS: ModulePermissions = {
+  packages: { view: false, manage: false },
+  visas: { view: false, manage: false },
+  leads: { view: true, manageStatus: false, delete: false },
+  databaseSync: { view: false, manage: false },
+  emailAlerts: { view: false, manage: false },
+  branding: { manage: false },
+  userManagement: { manage: false },
+};
+
+const DEFAULT_USERS_SEED: AdminUser[] = [
+  {
+    id: 'user_super_admin',
+    username: 'admin',
+    email: 'admin@tripmytour.com',
+    password: 'admin',
+    name: 'Syed Tanzeem (Super Admin)',
+    role: 'Super Admin',
+    active: true,
+    permissions: DEFAULT_PERMISSIONS['Super Admin'],
+    createdAt: '2026-09-01T00:00:00.000Z',
+  },
+  {
+    id: 'user_lead_viewer_sample',
+    username: 'lead_viewer',
+    email: 'viewer@tripmytour.com',
+    password: 'viewer123',
+    name: 'Rahul (View-Only Leads)',
+    role: 'Lead Specialist',
+    active: true,
+    permissions: VIEW_ONLY_LEADS_PERMISSIONS,
+    createdAt: '2026-09-15T00:00:00.000Z',
+  },
+];
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 60 * 1000; // 60 seconds
@@ -26,18 +92,29 @@ class AdminAuthService {
   }
 
   private initDefaults(): void {
-    if (!localStorage.getItem(CREDENTIALS_KEY)) {
-      localStorage.setItem(
-        CREDENTIALS_KEY,
-        JSON.stringify({
-          username: DEFAULT_ADMIN.username,
-          email: DEFAULT_ADMIN.email,
-          password: DEFAULT_ADMIN.password,
-          alternatePassword: DEFAULT_ADMIN.alternatePassword,
-          name: DEFAULT_ADMIN.name,
-          role: DEFAULT_ADMIN.role,
-        })
-      );
+    if (!localStorage.getItem(USERS_STORAGE_KEY)) {
+      // Check if old credentials existed and preserve custom password if set
+      let superAdminPassword = 'admin';
+      let superAdminName = 'Syed Tanzeem (Super Admin)';
+      let superAdminEmail = 'admin@tripmytour.com';
+      try {
+        const oldCreds = localStorage.getItem(CREDENTIALS_KEY);
+        if (oldCreds) {
+          const parsed = JSON.parse(oldCreds);
+          if (parsed.password) superAdminPassword = parsed.password;
+          if (parsed.name) superAdminName = parsed.name;
+          if (parsed.email) superAdminEmail = parsed.email;
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      const initialUsers = [...DEFAULT_USERS_SEED];
+      initialUsers[0].password = superAdminPassword;
+      initialUsers[0].name = superAdminName;
+      initialUsers[0].email = superAdminEmail;
+
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(initialUsers));
     }
   }
 
@@ -59,15 +136,202 @@ class AdminAuthService {
     window.dispatchEvent(new Event('admin-auth-changed'));
   }
 
-  private getStoredCredentials() {
+  // =========================================================================
+  // USER MANAGEMENT (SUPER ADMIN ONLY)
+  // =========================================================================
+
+  public getAllUsers(): AdminUser[] {
     try {
-      const raw = localStorage.getItem(CREDENTIALS_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch {
-      // fallback
+      const raw = localStorage.getItem(USERS_STORAGE_KEY);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.error('Failed to parse users:', e);
     }
-    return DEFAULT_ADMIN;
+    return DEFAULT_USERS_SEED;
   }
+
+  public getUserById(id: string): AdminUser | null {
+    const users = this.getAllUsers();
+    return users.find((u) => u.id === id) || null;
+  }
+
+  private saveUsers(users: AdminUser[]): void {
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    this.notify();
+  }
+
+  public createUser(userData: {
+    name: string;
+    username: string;
+    email: string;
+    password?: string;
+    role: AdminRole;
+    permissions?: ModulePermissions;
+    active?: boolean;
+  }): { success: boolean; message: string; user?: AdminUser } {
+    const users = this.getAllUsers();
+    const cleanUsername = userData.username.trim().toLowerCase();
+    const cleanEmail = userData.email.trim().toLowerCase();
+    const cleanName = userData.name.trim();
+
+    if (!cleanUsername || !cleanEmail || !cleanName) {
+      return { success: false, message: 'Name, username, and email are all required.' };
+    }
+
+    if (users.some((u) => u.username.toLowerCase() === cleanUsername)) {
+      return { success: false, message: `Username "${cleanUsername}" is already in use by another staff member.` };
+    }
+
+    if (users.some((u) => u.email.toLowerCase() === cleanEmail)) {
+      return { success: false, message: `Email "${cleanEmail}" is already registered.` };
+    }
+
+    const assignedPermissions = userData.permissions || DEFAULT_PERMISSIONS[userData.role] || DEFAULT_PERMISSIONS['Lead Specialist'];
+
+    const newUser: AdminUser = {
+      id: 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      name: cleanName,
+      username: cleanUsername,
+      email: cleanEmail,
+      password: (userData.password || 'welcome123').trim(),
+      role: userData.role,
+      active: userData.active !== undefined ? userData.active : true,
+      permissions: assignedPermissions,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedUsers = [...users, newUser];
+    this.saveUsers(updatedUsers);
+
+    this.logAudit({
+      action: 'USER_CREATED',
+      details: `Super Admin created user '${newUser.name}' (${newUser.username}) with role '${newUser.role}'.`,
+    });
+
+    return {
+      success: true,
+      message: `User '${newUser.name}' successfully created with role: ${newUser.role}!`,
+      user: newUser,
+    };
+  }
+
+  public updateUser(
+    id: string,
+    updates: Partial<AdminUser> & { newPassword?: string }
+  ): { success: boolean; message: string; user?: AdminUser } {
+    const users = this.getAllUsers();
+    const targetIdx = users.findIndex((u) => u.id === id);
+
+    if (targetIdx === -1) {
+      return { success: false, message: 'User not found in system records.' };
+    }
+
+    const existing = users[targetIdx];
+
+    // Protect primary super admin from losing super admin privileges or being deactivated
+    if (existing.id === 'user_super_admin' && updates.active === false) {
+      return { success: false, message: 'The primary system Super Admin account cannot be deactivated.' };
+    }
+    if (existing.id === 'user_super_admin' && updates.role && updates.role !== 'Super Admin') {
+      return { success: false, message: 'The primary system Super Admin role cannot be altered.' };
+    }
+
+    // Check username uniqueness if changed
+    if (updates.username && updates.username.trim().toLowerCase() !== existing.username.toLowerCase()) {
+      const uCheck = updates.username.trim().toLowerCase();
+      if (users.some((u) => u.id !== id && u.username.toLowerCase() === uCheck)) {
+        return { success: false, message: `Username "${uCheck}" is already taken.` };
+      }
+    }
+
+    // Check email uniqueness if changed
+    if (updates.email && updates.email.trim().toLowerCase() !== existing.email.toLowerCase()) {
+      const eCheck = updates.email.trim().toLowerCase();
+      if (users.some((u) => u.id !== id && u.email.toLowerCase() === eCheck)) {
+        return { success: false, message: `Email "${eCheck}" is already assigned to another user.` };
+      }
+    }
+
+    const updatedUser: AdminUser = {
+      ...existing,
+      name: updates.name ? updates.name.trim() : existing.name,
+      username: updates.username ? updates.username.trim().toLowerCase() : existing.username,
+      email: updates.email ? updates.email.trim().toLowerCase() : existing.email,
+      role: updates.role || existing.role,
+      active: updates.active !== undefined ? updates.active : existing.active,
+      permissions: updates.permissions || existing.permissions,
+      password: updates.newPassword ? updates.newPassword.trim() : (updates.password || existing.password),
+    };
+
+    users[targetIdx] = updatedUser;
+    this.saveUsers(users);
+
+    // If current logged-in user was updated, sync session state
+    const currentUser = this.getCurrentUser();
+    if (currentUser && currentUser.id === id) {
+      this.updateActiveSession(updatedUser);
+    }
+
+    this.logAudit({
+      action: 'USER_UPDATED',
+      details: `User profile & permissions updated for '${updatedUser.name}' (${updatedUser.username}). Role: ${updatedUser.role}, Status: ${updatedUser.active ? 'Active' : 'Suspended'}.`,
+    });
+
+    return {
+      success: true,
+      message: `User '${updatedUser.name}' updated successfully!`,
+      user: updatedUser,
+    };
+  }
+
+  public toggleUserActive(id: string): { success: boolean; message: string; active?: boolean } {
+    const users = this.getAllUsers();
+    const user = users.find((u) => u.id === id);
+    if (!user) return { success: false, message: 'User not found.' };
+
+    if (user.id === 'user_super_admin') {
+      return { success: false, message: 'The primary system Super Admin cannot be suspended.' };
+    }
+
+    const nextActive = !user.active;
+    return this.updateUser(id, { active: nextActive }).success
+      ? { success: true, message: `User ${user.name} is now ${nextActive ? 'Active' : 'Suspended'}.`, active: nextActive }
+      : { success: false, message: 'Failed to update user status.' };
+  }
+
+  public deleteUser(id: string): { success: boolean; message: string } {
+    const users = this.getAllUsers();
+    const user = users.find((u) => u.id === id);
+
+    if (!user) {
+      return { success: false, message: 'User not found.' };
+    }
+
+    if (user.id === 'user_super_admin') {
+      return { success: false, message: 'The primary Super Admin cannot be deleted.' };
+    }
+
+    const current = this.getCurrentUser();
+    if (current && current.id === id) {
+      return { success: false, message: 'You cannot delete your own currently active account.' };
+    }
+
+    const filtered = users.filter((u) => u.id !== id);
+    this.saveUsers(filtered);
+
+    this.logAudit({
+      action: 'USER_DELETED',
+      details: `Staff user '${user.name}' (${user.username}) was permanently removed by Super Admin.`,
+    });
+
+    return { success: true, message: `User '${user.name}' has been deleted.` };
+  }
+
+  // =========================================================================
+  // AUTHENTICATION & SESSIONS
+  // =========================================================================
 
   public getLockoutState(): { isLocked: boolean; remainingSeconds: number; failedAttempts: number } {
     try {
@@ -83,7 +347,6 @@ class AdminAuthService {
             failedAttempts: parsed.failedAttempts || MAX_FAILED_ATTEMPTS,
           };
         } else if (parsed.lockedUntil && parsed.lockedUntil <= now) {
-          // Lockout period expired
           localStorage.removeItem(LOCKOUT_KEY);
         } else {
           return {
@@ -150,12 +413,10 @@ class AdminAuthService {
 
   public getCurrentUser(): AdminUser | null {
     try {
-      // Check localStorage first (remember me)
       const localRaw = localStorage.getItem(SESSION_LOCAL_KEY);
       if (localRaw) {
         const session = JSON.parse(localRaw);
         if (session && session.user) {
-          // Check expiration if any
           if (session.sessionExpiresAt && new Date(session.sessionExpiresAt).getTime() < Date.now()) {
             this.logout();
             return null;
@@ -164,7 +425,6 @@ class AdminAuthService {
         }
       }
 
-      // Check sessionStorage (transient session)
       const sessionRaw = sessionStorage.getItem(SESSION_SESSION_KEY);
       if (sessionRaw) {
         const session = JSON.parse(sessionRaw);
@@ -176,6 +436,25 @@ class AdminAuthService {
       console.error('Failed to parse admin session:', e);
     }
     return null;
+  }
+
+  private updateActiveSession(user: AdminUser): void {
+    const localRaw = localStorage.getItem(SESSION_LOCAL_KEY);
+    if (localRaw) {
+      try {
+        const parsed = JSON.parse(localRaw);
+        parsed.user = user;
+        localStorage.setItem(SESSION_LOCAL_KEY, JSON.stringify(parsed));
+      } catch (e) {}
+    }
+    const sessionRaw = sessionStorage.getItem(SESSION_SESSION_KEY);
+    if (sessionRaw) {
+      try {
+        const parsed = JSON.parse(sessionRaw);
+        parsed.user = user;
+        sessionStorage.setItem(SESSION_SESSION_KEY, JSON.stringify(parsed));
+      } catch (e) {}
+    }
   }
 
   public login(
@@ -198,21 +477,23 @@ class AdminAuthService {
       };
     }
 
-    const creds = this.getStoredCredentials();
     const cleanId = (identifier || '').trim().toLowerCase();
     const cleanPassword = (passwordAttempt || '').trim();
 
-    const isIdMatch =
-      cleanId === creds.username.toLowerCase() ||
-      cleanId === creds.email.toLowerCase() ||
-      cleanId === 'admin' ||
-      cleanId === 'admin@tripmytour.com';
+    if (!cleanId || !cleanPassword) {
+      return { success: false, message: 'Please enter both username/email and password.' };
+    }
 
-    const isPasswordMatch =
-      cleanPassword === creds.password ||
-      (creds.alternatePassword && cleanPassword === creds.alternatePassword);
+    const users = this.getAllUsers();
+    const matchingUser = users.find(
+      (u) =>
+        u.username.toLowerCase() === cleanId ||
+        u.email.toLowerCase() === cleanId ||
+        (cleanId === 'admin' && u.id === 'user_super_admin') ||
+        (cleanId === 'admin@tripmytour.com' && u.id === 'user_super_admin')
+    );
 
-    if (!isIdMatch || !isPasswordMatch) {
+    if (!matchingUser || matchingUser.password !== cleanPassword) {
       const failInfo = this.recordFailedAttempt(identifier);
       if (failInfo.isLocked) {
         return {
@@ -223,32 +504,41 @@ class AdminAuthService {
       }
       return {
         success: false,
-        message: `Invalid credentials. Please verify username/email and password. (${failInfo.remainingAttempts} attempts remaining)`,
+        message: `Invalid credentials. Please verify your username/email and password. (${failInfo.remainingAttempts} attempts remaining)`,
         remainingAttempts: failInfo.remainingAttempts,
       };
     }
 
-    // Success! Clear lockout
+    // Check if user is suspended / deactivated
+    if (matchingUser.active === false) {
+      return {
+        success: false,
+        message: 'This staff account has been deactivated or suspended by the Super Admin. Please contact operations management.',
+      };
+    }
+
+    // Clear lockout on success
     this.clearFailedAttempts();
 
     const now = new Date().toISOString();
-    // 30 days if rememberMe, otherwise 12 hours
     const expiresAt = new Date(
       Date.now() + (rememberMe ? 30 * 24 * 60 * 60 * 1000 : 12 * 60 * 60 * 1000)
     ).toISOString();
 
-    const user: AdminUser = {
-      id: 'admin_primary',
-      email: creds.email,
-      username: creds.username,
-      name: creds.name || 'TripMyTour Administrator',
-      role: creds.role || 'Super Admin',
+    // Update user's last login in records
+    matchingUser.lastLoginAt = now;
+    this.saveUsers(users);
+
+    const sessionUser: AdminUser = {
+      ...matchingUser,
       lastLoginAt: now,
       sessionExpiresAt: expiresAt,
     };
+    // Ensure password is not in active session
+    delete sessionUser.password;
 
     const sessionPayload = JSON.stringify({
-      user,
+      user: sessionUser,
       token: 'tmt_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
       loginTimestamp: now,
       sessionExpiresAt: expiresAt,
@@ -265,15 +555,15 @@ class AdminAuthService {
 
     this.logAudit({
       action: 'LOGIN_SUCCESS',
-      details: `Administrator '${user.name}' signed in successfully. Session validity: ${rememberMe ? '30 Days' : '12 Hours'}.`,
+      details: `'${sessionUser.name}' (${sessionUser.role}) signed in successfully. Session validity: ${rememberMe ? '30 Days' : '12 Hours'}.`,
     });
 
     this.notify();
 
     return {
       success: true,
-      message: `Welcome back, ${user.name}!`,
-      user,
+      message: `Welcome back, ${sessionUser.name}!`,
+      user: sessionUser,
     };
   }
 
@@ -285,7 +575,7 @@ class AdminAuthService {
     if (user) {
       this.logAudit({
         action: 'LOGOUT',
-        details: `Administrator '${user.name}' logged out.`,
+        details: `User '${user.name}' (${user.role}) logged out.`,
       });
     }
 
@@ -296,34 +586,29 @@ class AdminAuthService {
     currentPassword: string,
     newPassword: string
   ): { success: boolean; message: string } {
-    const creds = this.getStoredCredentials();
+    const currentUser = this.getCurrentUser();
+    if (!currentUser) return { success: false, message: 'No active user session.' };
 
-    if (
-      currentPassword !== creds.password &&
-      currentPassword !== creds.alternatePassword
-    ) {
-      return { success: false, message: 'Current password does not match existing records.' };
+    const users = this.getAllUsers();
+    const user = users.find((u) => u.id === currentUser.id);
+    if (!user) return { success: false, message: 'User record not found.' };
+
+    if (user.password !== currentPassword) {
+      return { success: false, message: 'Current password does not match system records.' };
     }
 
     if (!newPassword || newPassword.trim().length < 4) {
       return { success: false, message: 'New password must be at least 4 characters long.' };
     }
 
-    const updated = {
-      ...creds,
-      password: newPassword.trim(),
-      alternatePassword: '', // clear fallback once customized
-      updatedAt: new Date().toISOString(),
-    };
-
-    localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(updated));
+    user.password = newPassword.trim();
+    this.saveUsers(users);
 
     this.logAudit({
       action: 'PASSWORD_CHANGED',
-      details: 'Administrator password was changed successfully.',
+      details: `Password changed for '${user.name}' (${user.username}).`,
     });
 
-    this.notify();
     return { success: true, message: 'Password updated successfully!' };
   }
 
@@ -331,60 +616,20 @@ class AdminAuthService {
     name: string,
     email: string
   ): { success: boolean; message: string } {
-    const creds = this.getStoredCredentials();
-    const updated = {
-      ...creds,
-      name: (name || creds.name).trim(),
-      email: (email || creds.email).trim().toLowerCase(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(updated));
-
-    // Update active session user if currently logged in
     const currentUser = this.getCurrentUser();
-    if (currentUser) {
-      currentUser.name = updated.name;
-      currentUser.email = updated.email;
+    if (!currentUser) return { success: false, message: 'No active session.' };
 
-      const raw = localStorage.getItem(SESSION_LOCAL_KEY) || sessionStorage.getItem(SESSION_SESSION_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        parsed.user = currentUser;
-        if (localStorage.getItem(SESSION_LOCAL_KEY)) {
-          localStorage.setItem(SESSION_LOCAL_KEY, JSON.stringify(parsed));
-        } else {
-          sessionStorage.setItem(SESSION_SESSION_KEY, JSON.stringify(parsed));
-        }
-      }
-    }
-
-    this.logAudit({
-      action: 'PROFILE_UPDATED',
-      details: `Admin profile details updated: ${updated.name} (${updated.email}).`,
-    });
-
-    this.notify();
-    return { success: true, message: 'Admin profile updated successfully!' };
+    return this.updateUser(currentUser.id, { name, email });
   }
 
   public resetToDefaults(): void {
-    localStorage.setItem(
-      CREDENTIALS_KEY,
-      JSON.stringify({
-        username: DEFAULT_ADMIN.username,
-        email: DEFAULT_ADMIN.email,
-        password: DEFAULT_ADMIN.password,
-        alternatePassword: DEFAULT_ADMIN.alternatePassword,
-        name: DEFAULT_ADMIN.name,
-        role: DEFAULT_ADMIN.role,
-      })
-    );
+    localStorage.removeItem(CREDENTIALS_KEY);
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(DEFAULT_USERS_SEED));
     this.clearFailedAttempts();
 
     this.logAudit({
       action: 'CREDENTIALS_RESET',
-      details: 'Admin credentials restored to system defaults (admin / admin).',
+      details: 'Staff users and permissions restored to system defaults.',
     });
 
     this.notify();
@@ -402,7 +647,7 @@ class AdminAuthService {
         id: 'audit_init',
         timestamp: new Date().toISOString(),
         action: 'LOGIN_SUCCESS',
-        details: 'Admin Security Firewall initialized for TripMyTour portal.',
+        details: 'TripMyTour Role-Based Access Control & User Security System Initialized.',
       },
     ];
   }
@@ -421,7 +666,6 @@ class AdminAuthService {
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Web Client',
         ...entry,
       };
-      // Keep up to 100 recent entries
       const updated = [newEntry, ...logs].slice(0, 100);
       localStorage.setItem(AUDIT_LOGS_KEY, JSON.stringify(updated));
     } catch (err) {
@@ -429,14 +673,45 @@ class AdminAuthService {
     }
   }
 
-  public getDefaultCredentialsHint() {
-    const creds = this.getStoredCredentials();
-    return {
-      username: creds.username,
-      email: creds.email,
-      passwordHint: creds.password === DEFAULT_ADMIN.password ? 'admin' : '••••••••',
-    };
+  // =========================================================================
+  // PERMISSION CHECK HELPERS
+  // =========================================================================
+
+  public isSuperAdmin(user: AdminUser | null): boolean {
+    if (!user) return false;
+    return user.role === 'Super Admin' || user.permissions?.userManagement?.manage === true;
+  }
+
+  public canView(user: AdminUser | null, module: keyof ModulePermissions): boolean {
+    if (!user) return false;
+    if (this.isSuperAdmin(user)) return true;
+    const mod = user.permissions?.[module];
+    if (!mod) return false;
+    if ('view' in mod) return (mod as any).view;
+    if ('manage' in mod) return (mod as any).manage;
+    return false;
+  }
+
+  public canManage(user: AdminUser | null, module: keyof ModulePermissions): boolean {
+    if (!user) return false;
+    if (this.isSuperAdmin(user)) return true;
+    const mod = user.permissions?.[module];
+    if (!mod) return false;
+    return (mod as any).manage === true;
+  }
+
+  public canManageLeadStatus(user: AdminUser | null): boolean {
+    if (!user) return false;
+    if (this.isSuperAdmin(user)) return true;
+    return user.permissions?.leads?.manageStatus === true;
+  }
+
+  public canDeleteLeads(user: AdminUser | null): boolean {
+    if (!user) return false;
+    if (this.isSuperAdmin(user)) return true;
+    return user.permissions?.leads?.delete === true;
   }
 }
 
 export const adminAuthService = new AdminAuthService();
+

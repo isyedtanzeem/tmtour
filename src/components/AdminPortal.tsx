@@ -32,6 +32,8 @@ import {
   LogOut,
   KeyRound,
   ShieldCheck,
+  Shield,
+  Eye,
   ArrowLeft
 } from 'lucide-react';
 import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig, ItineraryDay, AdminUser } from '../types';
@@ -39,8 +41,12 @@ import { sheetsService } from '../services/sheetsService';
 import { leadEmailService } from '../services/leadEmailService';
 import { AdminLeadEmailManager } from './AdminLeadEmailManager';
 import { AdminSecurityManager } from './AdminSecurityManager';
+import { AdminUserManager } from './AdminUserManager';
+import { adminAuthService } from '../services/adminAuthService';
 import { GOOGLE_APPS_SCRIPT_CODE } from '../services/appsScriptTemplate';
 import { formatCurrency } from '../utils/formatters';
+
+export type AdminTabType = 'packages' | 'visas' | 'bookings' | 'sheets' | 'logo' | 'emails' | 'security' | 'users';
 
 interface AdminPortalProps {
   packages: HolidayPackage[];
@@ -67,7 +73,61 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onProfileUpdated,
   onExitToSite,
 }) => {
-  const [adminTab, setAdminTab] = useState<'packages' | 'visas' | 'bookings' | 'sheets' | 'logo' | 'emails' | 'security'>('packages');
+  // Functional permission calculations
+  const canViewPackages = adminAuthService.canView(currentUser || null, 'packages');
+  const canManagePackages = adminAuthService.canManage(currentUser || null, 'packages');
+
+  const canViewVisas = adminAuthService.canView(currentUser || null, 'visas');
+  const canManageVisas = adminAuthService.canManage(currentUser || null, 'visas');
+
+  const canViewLeads = adminAuthService.canView(currentUser || null, 'leads');
+  const canManageLeadStatus = adminAuthService.canManageLeadStatus(currentUser || null);
+  const canDeleteLeads = adminAuthService.canDeleteLeads(currentUser || null);
+
+  const canViewSheets = adminAuthService.canView(currentUser || null, 'databaseSync');
+  const canManageSheets = adminAuthService.canManage(currentUser || null, 'databaseSync');
+
+  const canViewEmails = adminAuthService.canView(currentUser || null, 'emailAlerts');
+  const canManageEmails = adminAuthService.canManage(currentUser || null, 'emailAlerts');
+
+  const canViewBranding = adminAuthService.canView(currentUser || null, 'branding');
+  const canManageBranding = adminAuthService.canManage(currentUser || null, 'branding');
+  const isSuperAdmin = adminAuthService.isSuperAdmin(currentUser || null);
+
+  const getInitialTab = (): AdminTabType => {
+    if (!currentUser) return 'packages';
+    if (adminAuthService.canView(currentUser, 'packages')) return 'packages';
+    if (adminAuthService.canView(currentUser, 'leads')) return 'bookings';
+    if (adminAuthService.canView(currentUser, 'visas')) return 'visas';
+    if (adminAuthService.isSuperAdmin(currentUser)) return 'users';
+    if (adminAuthService.canView(currentUser, 'databaseSync')) return 'sheets';
+    if (adminAuthService.canView(currentUser, 'branding')) return 'logo';
+    if (adminAuthService.canView(currentUser, 'emailAlerts')) return 'emails';
+    return 'security';
+  };
+
+  const [adminTab, setAdminTab] = useState<AdminTabType>(getInitialTab);
+
+  // Auto-redirect if tab is restricted
+  useEffect(() => {
+    const isCurrentTabAllowed = () => {
+      switch (adminTab) {
+        case 'packages': return canViewPackages;
+        case 'visas': return canViewVisas;
+        case 'bookings': return canViewLeads;
+        case 'sheets': return canViewSheets;
+        case 'logo': return canViewBranding;
+        case 'emails': return canViewEmails;
+        case 'users': return isSuperAdmin;
+        case 'security': return true;
+        default: return true;
+      }
+    };
+
+    if (!isCurrentTabAllowed()) {
+      setAdminTab(getInitialTab());
+    }
+  }, [currentUser, canViewPackages, canViewVisas, canViewLeads, canViewSheets, canViewBranding, canManageBranding, canViewEmails, isSuperAdmin, adminTab]);
   const [copiedDirectUrl, setCopiedDirectUrl] = useState(false);
   const [emailRecipientCount, setEmailRecipientCount] = useState<number>(() => {
     return leadEmailService.getSettings().recipients.filter((r) => r.active).length;
@@ -457,77 +517,111 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
       {/* Admin Tabs */}
       <div className="flex border-b border-slate-200 gap-2 sm:gap-6 overflow-x-auto pb-1">
-        <button
-          onClick={() => setAdminTab('packages')}
-          className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
-            adminTab === 'packages'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
-        >
-          <Compass className="w-4 h-4" />
-          <span>Holiday Packages ({packages.length})</span>
-        </button>
+        {canViewPackages && (
+          <button
+            onClick={() => setAdminTab('packages')}
+            className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+              adminTab === 'packages'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Compass className="w-4 h-4" />
+            <span>Holiday Packages ({packages.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAdminTab('visas')}
-          className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
-            adminTab === 'visas'
-              ? 'border-emerald-600 text-emerald-600'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
-        >
-          <FileCheck className="w-4 h-4" />
-          <span>Visa Services ({visas.length})</span>
-        </button>
+        {canViewVisas && (
+          <button
+            onClick={() => setAdminTab('visas')}
+            className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+              adminTab === 'visas'
+                ? 'border-emerald-600 text-emerald-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <FileCheck className="w-4 h-4" />
+            <span>Visa Services ({visas.length})</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAdminTab('bookings')}
-          className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
-            adminTab === 'bookings'
-              ? 'border-purple-600 text-purple-600'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Inquiries & Applications ({bookings.length + applications.length})</span>
-        </button>
+        {canViewLeads && (
+          <button
+            onClick={() => setAdminTab('bookings')}
+            className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+              adminTab === 'bookings'
+                ? 'border-purple-600 text-purple-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Inquiries & Applications ({bookings.length + applications.length})</span>
+            {!canManageLeadStatus && (
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                View Only
+              </span>
+            )}
+          </button>
+        )}
 
-        <button
-          onClick={() => setAdminTab('sheets')}
-          className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
-            adminTab === 'sheets'
-              ? 'border-slate-900 text-slate-900'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
-        >
-          <Code className="w-4 h-4" />
-          <span>Cloud Database & Sync Setup</span>
-        </button>
+        {canViewSheets && (
+          <button
+            onClick={() => setAdminTab('sheets')}
+            className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+              adminTab === 'sheets'
+                ? 'border-slate-900 text-slate-900'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Code className="w-4 h-4" />
+            <span>Cloud Database & Sync Setup</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAdminTab('logo')}
-          className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
-            adminTab === 'logo'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
-        >
-          <ImageIcon className="w-4 h-4" />
-          <span>Brand Logo (logo.png)</span>
-        </button>
+        {canManageBranding && (
+          <button
+            onClick={() => setAdminTab('logo')}
+            className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+              adminTab === 'logo'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span>Brand Logo (logo.png)</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setAdminTab('emails')}
-          className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
-            adminTab === 'emails'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
-        >
-          <Mail className="w-4 h-4" />
-          <span>Lead Email Alerts ({emailRecipientCount})</span>
-        </button>
+        {canViewEmails && (
+          <button
+            onClick={() => setAdminTab('emails')}
+            className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+              adminTab === 'emails'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Mail className="w-4 h-4" />
+            <span>Lead Email Alerts ({emailRecipientCount})</span>
+          </button>
+        )}
+
+        {isSuperAdmin && (
+          <button
+            onClick={() => setAdminTab('users')}
+            className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+              adminTab === 'users'
+                ? 'border-purple-600 text-purple-700'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Shield className="w-4 h-4 text-purple-600" />
+            <span>Staff & Roles</span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-purple-100 text-purple-700">
+              Super Admin
+            </span>
+          </button>
+        )}
 
         <button
           onClick={() => setAdminTab('security')}
@@ -545,8 +639,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* ============================================================= */}
       {/* TAB 1: HOLIDAY PACKAGES MANAGEMENT */}
       {/* ============================================================= */}
-      {adminTab === 'packages' && (
+      {adminTab === 'packages' && canViewPackages && (
         <div className="space-y-6">
+          {!canManagePackages && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl flex items-center gap-2.5 text-xs font-medium">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Read-Only Mode:</strong> Your staff account has view permission for holiday packages. Package creation, editing, and deletion are restricted to authorized managers.
+              </span>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-slate-900">
@@ -557,16 +660,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                setEditingPackage(null);
-                setIsAddingPackage(true);
-              }}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add New Package</span>
-            </button>
+            {canManagePackages && (
+              <button
+                onClick={() => {
+                  setEditingPackage(null);
+                  setIsAddingPackage(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add New Package</span>
+              </button>
+            )}
           </div>
 
           {/* Packages Table */}
@@ -628,25 +733,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         ★ {pkg.rating.toFixed(1)}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => {
-                              setEditingPackage(pkg);
-                              setIsAddingPackage(false);
-                            }}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                            title="Edit Package"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setPackageToDelete(pkg)}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            title="Delete Package"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        {canManagePackages ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => {
+                                setEditingPackage(pkg);
+                                setIsAddingPackage(false);
+                              }}
+                              className="p-1.5 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                              title="Edit Package"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setPackageToDelete(pkg)}
+                              className="p-1.5 rounded-lg text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Delete Package"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium italic">
+                            Read-Only
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -660,8 +771,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* ============================================================= */}
       {/* TAB 2: VISA SERVICES MANAGEMENT */}
       {/* ============================================================= */}
-      {adminTab === 'visas' && (
+      {adminTab === 'visas' && canViewVisas && (
         <div className="space-y-6">
+          {!canManageVisas && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl flex items-center gap-2.5 text-xs font-medium">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Read-Only Mode:</strong> Your staff account has view permission for visa services. Adding or updating visa countries and fees is restricted.
+              </span>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-slate-900">
@@ -672,16 +792,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                setEditingVisa(null);
-                setIsAddingVisa(true);
-              }}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Visa Service</span>
-            </button>
+            {canManageVisas && (
+              <button
+                onClick={() => {
+                  setEditingVisa(null);
+                  setIsAddingVisa(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Visa Service</span>
+              </button>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -732,25 +854,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => {
-                              setEditingVisa(v);
-                              setIsAddingVisa(false);
-                            }}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                            title="Edit Visa"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setVisaToDelete(v)}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            title="Delete Visa"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        {canManageVisas ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => {
+                                setEditingVisa(v);
+                                setIsAddingVisa(false);
+                              }}
+                              className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
+                              title="Edit Visa Service"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setVisaToDelete(v)}
+                              className="p-1.5 rounded-lg text-slate-600 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Delete Visa Service"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium italic">
+                            Read-Only
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -764,8 +892,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* ============================================================= */}
       {/* TAB 3: INQUIRIES & APPLICATIONS FEED */}
       {/* ============================================================= */}
-      {adminTab === 'bookings' && (
+      {adminTab === 'bookings' && canViewLeads && (
         <div className="space-y-8">
+          {/* View-Only Restriction Banner if user cannot update status */}
+          {!canManageLeadStatus && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3.5 rounded-2xl flex items-center gap-3 text-xs font-medium shadow-xs">
+              <Eye className="w-5 h-5 text-blue-600 shrink-0" />
+              <div>
+                <span className="font-bold block text-blue-950">View-Only Leads Mode Active:</span>
+                <span>You have operational authorization to inspect client holiday bookings and visa application documents. Updating status or deleting lead records is restricted.</span>
+              </div>
+            </div>
+          )}
+
           {/* Quick Lead Routing Banner */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-3">
@@ -784,13 +923,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setAdminTab('emails')}
-              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <span>Manage Lead Emails</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+            {canViewEmails && (
+              <button
+                onClick={() => setAdminTab('emails')}
+                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <span>Manage Lead Emails</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Section: Visa Applications */}
@@ -822,7 +963,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         <th className="py-3.5 px-4">Passport</th>
                         <th className="py-3.5 px-4">Travel Date</th>
                         <th className="py-3.5 px-4">Amount</th>
-                        <th className="py-3.5 px-4">Status (Click to Update)</th>
+                        <th className="py-3.5 px-4">{canManageLeadStatus ? 'Status (Click to Update)' : 'Status'}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -849,17 +990,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             {formatCurrency(app.totalAmount)}
                           </td>
                           <td className="py-3.5 px-4">
-                            <select
-                              value={app.status}
-                              onChange={(e) => handleUpdateApplicationStatus(app.id, e.target.value as any)}
-                              className="py-1 px-2 rounded-lg text-xs font-semibold bg-slate-50 border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                            >
-                              <option value="Under Review">Under Review</option>
-                              <option value="Documents Verified">Documents Verified</option>
-                              <option value="Submitted to Embassy">Submitted to Embassy</option>
-                              <option value="Approved">Approved</option>
-                              <option value="Rejected">Rejected</option>
-                            </select>
+                            {canManageLeadStatus ? (
+                              <select
+                                value={app.status}
+                                onChange={(e) => handleUpdateApplicationStatus(app.id, e.target.value as any)}
+                                className="py-1 px-2 rounded-lg text-xs font-semibold bg-slate-50 border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                              >
+                                <option value="Under Review">Under Review</option>
+                                <option value="Documents Verified">Documents Verified</option>
+                                <option value="Submitted to Embassy">Submitted to Embassy</option>
+                                <option value="Approved">Approved</option>
+                                <option value="Rejected">Rejected</option>
+                              </select>
+                            ) : (
+                              <span className="inline-block py-1 px-2.5 rounded-lg text-xs font-semibold bg-slate-100 border border-slate-200 text-slate-700">
+                                {app.status}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -925,16 +1072,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             {formatCurrency(b.totalPrice)}
                           </td>
                           <td className="py-3.5 px-4">
-                            <select
-                              value={b.status}
-                              onChange={(e) => handleUpdateBookingStatus(b.id, e.target.value as any)}
-                              className="py-1 px-2 rounded-lg text-xs font-semibold bg-slate-50 border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                            >
-                              <option value="Pending">Pending</option>
-                              <option value="Confirmed">Confirmed</option>
-                              <option value="Completed">Completed</option>
-                              <option value="Cancelled">Cancelled</option>
-                            </select>
+                            {canManageLeadStatus ? (
+                              <select
+                                value={b.status}
+                                onChange={(e) => handleUpdateBookingStatus(b.id, e.target.value as any)}
+                                className="py-1 px-2 rounded-lg text-xs font-semibold bg-slate-50 border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                              >
+                                <option value="Pending">Pending</option>
+                                <option value="Confirmed">Confirmed</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Cancelled">Cancelled</option>
+                              </select>
+                            ) : (
+                              <span className="inline-block py-1 px-2.5 rounded-lg text-xs font-semibold bg-slate-100 border border-slate-200 text-slate-700">
+                                {b.status}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -950,8 +1103,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* ============================================================= */}
       {/* TAB 4: GOOGLE SHEETS & APPS SCRIPT SETUP */}
       {/* ============================================================= */}
-      {adminTab === 'sheets' && (
+      {adminTab === 'sheets' && canViewSheets && (
         <div className="space-y-8">
+          {!canManageSheets && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl flex items-center gap-2.5 text-xs font-medium">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Read-Only Mode:</strong> Your staff account has view permission for database sync settings. Modifying the Google Apps Script Web App URL and database sync settings is restricted.
+              </span>
+            </div>
+          )}
+
           {/* Form to paste Web App URL */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs">
             <h2 className="text-xl font-bold text-slate-900 mb-2">
@@ -972,13 +1134,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
                     value={webAppUrlInput}
                     onChange={(e) => setWebAppUrlInput(e.target.value)}
-                    className="flex-1 px-4 py-3 text-xs sm:text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    disabled={!canManageSheets}
+                    className="flex-1 px-4 py-3 text-xs sm:text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                   <button
                     type="button"
                     onClick={handleTestConnection}
                     disabled={testingConnection || testingEmail}
-                    className="px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs shrink-0 transition-colors"
+                    className="px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs shrink-0 transition-colors cursor-pointer"
                   >
                     {testingConnection ? 'Testing...' : 'Test Ping'}
                   </button>
@@ -986,7 +1149,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     type="button"
                     onClick={handleTestEmail}
                     disabled={testingConnection || testingEmail}
-                    className="px-4 py-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs shrink-0 border border-blue-200 transition-colors flex items-center gap-1.5"
+                    className="px-4 py-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs shrink-0 border border-blue-200 transition-colors flex items-center gap-1.5 cursor-pointer"
                     title="Sends an instant test lead email via Google Apps Script"
                   >
                     <Mail className="w-3.5 h-3.5 text-blue-600" />
@@ -1047,39 +1210,41 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="submit"
-                    className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
-                  >
-                    Save Configuration
-                  </button>
-
-                  {(webAppUrlInput || sheetsConfig.webAppUrl) && (
+              {canManageSheets && (
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <div className="flex items-center gap-3">
                     <button
-                      type="button"
-                      onClick={handleDisconnectUrl}
-                      className="px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs sm:text-sm transition-colors cursor-pointer"
+                      type="submit"
+                      className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
                     >
-                      Disconnect & Use Local Mode
+                      Save Configuration
                     </button>
-                  )}
-                </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm('Reset database back to original sample holiday & visa templates?')) {
-                      sheetsService.resetToDefaultTemplate();
-                      onRefresh();
-                    }
-                  }}
-                  className="text-xs text-rose-600 hover:underline font-semibold cursor-pointer"
-                >
-                  Reset to Default Seed Data
-                </button>
-              </div>
+                    {(webAppUrlInput || sheetsConfig.webAppUrl) && (
+                      <button
+                        type="button"
+                        onClick={handleDisconnectUrl}
+                        className="px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs sm:text-sm transition-colors cursor-pointer"
+                      >
+                        Disconnect & Use Local Mode
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Reset database back to original sample holiday & visa templates?')) {
+                        sheetsService.resetToDefaultTemplate();
+                        onRefresh();
+                      }
+                    }}
+                    className="text-xs text-rose-600 hover:underline font-semibold cursor-pointer"
+                  >
+                    Reset to Default Seed Data
+                  </button>
+                </div>
+              )}
             </form>
           </div>
 
@@ -1158,8 +1323,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* ============================================================= */}
       {/* TAB 5: BRAND LOGO (logo.png) & FILE STRUCTURE */}
       {/* ============================================================= */}
-      {adminTab === 'logo' && (
+      {adminTab === 'logo' && canViewBranding && (
         <div className="space-y-8">
+          {!canManageBranding && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl flex items-center gap-2.5 text-xs font-medium">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Read-Only Mode:</strong> Your staff account has view permission for portal branding. Uploading or modifying logo assets is restricted to authorized managers.
+              </span>
+            </div>
+          )}
+
           {/* Header Banner */}
           <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
             <div className="relative z-10 max-w-2xl">
@@ -1415,7 +1589,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* ============================================================= */}
       {/* TAB 6: LEAD EMAIL ALERTS MANAGEMENT */}
       {/* ============================================================= */}
-      {adminTab === 'emails' && (
+      {adminTab === 'emails' && canViewEmails && (
         <AdminLeadEmailManager />
       )}
 
@@ -1427,6 +1601,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           currentUser={currentUser || null}
           onLogout={onLogout || (() => {})}
           onProfileUpdated={onProfileUpdated || (() => {})}
+        />
+      )}
+
+      {/* ============================================================= */}
+      {/* TAB 8: STAFF USERS & FUNCTIONAL RESTRICTIONS (SUPER ADMIN) */}
+      {/* ============================================================= */}
+      {adminTab === 'users' && isSuperAdmin && (
+        <AdminUserManager
+          currentUser={currentUser || null}
+          onUsersChanged={() => {
+            const refreshed = adminAuthService.getCurrentUser();
+            if (refreshed && onProfileUpdated) {
+              onProfileUpdated(refreshed);
+            }
+          }}
         />
       )}
 

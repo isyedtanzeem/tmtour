@@ -141,20 +141,60 @@ export interface LeadNotificationLog {
   error?: string;
 }
 
+export interface ModulePermissions {
+  packages: {
+    view: boolean;
+    manage: boolean; // create, edit, delete
+  };
+  visas: {
+    view: boolean;
+    manage: boolean; // create, edit, delete
+  };
+  leads: {
+    view: boolean; // view holiday inquiries & visa applications
+    manageStatus: boolean; // change status: Pending -> In Review -> Contacted -> Completed
+    delete: boolean; // delete inquiry records
+  };
+  databaseSync: {
+    view: boolean;
+    manage: boolean;
+  };
+  emailAlerts: {
+    view: boolean;
+    manage: boolean;
+  };
+  branding: {
+    manage: boolean;
+  };
+  userManagement: {
+    manage: boolean; // create & configure staff permissions (Super Admin only)
+  };
+}
+
+export type AdminRole = 
+  | 'Super Admin' 
+  | 'Operations Manager' 
+  | 'Lead Specialist' 
+  | 'Custom Staff';
+
 export interface AdminUser {
   id: string;
   email: string;
   username: string;
   name: string;
-  role: 'Super Admin' | 'Operations Manager';
-  lastLoginAt: string;
+  role: AdminRole;
+  active: boolean;
+  permissions: ModulePermissions;
+  password?: string;
+  createdAt?: string;
+  lastLoginAt?: string;
   sessionExpiresAt?: string;
 }
 
 export interface SecurityAuditLog {
   id: string;
   timestamp: string;
-  action: 'LOGIN_SUCCESS' | 'LOGIN_FAILED' | 'LOGOUT' | 'PASSWORD_CHANGED' | 'PROFILE_UPDATED' | 'CREDENTIALS_RESET';
+  action: 'LOGIN_SUCCESS' | 'LOGIN_FAILED' | 'LOGOUT' | 'PASSWORD_CHANGED' | 'PROFILE_UPDATED' | 'CREDENTIALS_RESET' | 'USER_CREATED' | 'USER_UPDATED' | 'USER_DELETED';
   details: string;
   ip?: string;
   userAgent?: string;
