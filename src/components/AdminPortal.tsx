@@ -34,7 +34,8 @@ import {
   ShieldCheck,
   Shield,
   Eye,
-  ArrowLeft
+  ArrowLeft,
+  Globe
 } from 'lucide-react';
 import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig, ItineraryDay, AdminUser } from '../types';
 import { sheetsService } from '../services/sheetsService';
@@ -221,16 +222,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [testingEmail, setTestingEmail] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [copiedScript, setCopiedScript] = useState(false);
+  const [copiedEnvVar, setCopiedEnvVar] = useState(false);
 
   // Modal states for Package CRUD
   const [editingPackage, setEditingPackage] = useState<HolidayPackage | null>(null);
   const [isAddingPackage, setIsAddingPackage] = useState(false);
   const [packageToDelete, setPackageToDelete] = useState<HolidayPackage | null>(null);
+  const [isSavingPackage, setIsSavingPackage] = useState(false);
+  const [packageSaveError, setPackageSaveError] = useState<string | null>(null);
+  const [isDeletingPackage, setIsDeletingPackage] = useState(false);
 
   // Modal states for Visa CRUD
   const [editingVisa, setEditingVisa] = useState<VisaService | null>(null);
   const [isAddingVisa, setIsAddingVisa] = useState(false);
   const [visaToDelete, setVisaToDelete] = useState<VisaService | null>(null);
+  const [isSavingVisa, setIsSavingVisa] = useState(false);
+  const [visaSaveError, setVisaSaveError] = useState<string | null>(null);
+  const [isDeletingVisa, setIsDeletingVisa] = useState(false);
 
   // Save Apps Script Config
   const handleSaveConfig = async (e: React.FormEvent) => {
@@ -325,21 +333,53 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setTimeout(() => setCopiedScript(false), 2500);
   };
 
+  const [actionBanner, setActionBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const showBanner = (type: 'success' | 'error', text: string) => {
+    setActionBanner({ type, text });
+    setTimeout(() => setActionBanner(null), 5000);
+  };
+
   // -------------------------------------------------------------
   // Package Handlers
   // -------------------------------------------------------------
   const handleSavePackageSubmit = async (pkgData: HolidayPackage) => {
-    await sheetsService.savePackage(pkgData);
-    setEditingPackage(null);
-    setIsAddingPackage(false);
-    onRefresh();
+    setIsSavingPackage(true);
+    setPackageSaveError(null);
+    try {
+      const res = await sheetsService.savePackage(pkgData);
+      setIsSavingPackage(false);
+      if (res.success) {
+        setEditingPackage(null);
+        setIsAddingPackage(false);
+        onRefresh();
+        showBanner('success', res.message || 'Holiday package saved and synced to Google Sheets database!');
+      } else {
+        setPackageSaveError(res.error || res.message || 'Failed to save package to Google Sheets.');
+      }
+    } catch (err: any) {
+      setIsSavingPackage(false);
+      setPackageSaveError(err?.message || 'Error saving package to Google Sheets.');
+    }
   };
 
   const confirmDeletePackage = async () => {
     if (packageToDelete) {
-      await sheetsService.deletePackage(packageToDelete.id);
-      setPackageToDelete(null);
-      onRefresh();
+      setIsDeletingPackage(true);
+      try {
+        const res = await sheetsService.deletePackage(packageToDelete.id);
+        setIsDeletingPackage(false);
+        setPackageToDelete(null);
+        onRefresh();
+        if (res.success) {
+          showBanner('success', res.message || 'Package deleted from Google Sheets database.');
+        } else {
+          showBanner('error', res.error || res.message || 'Failed to delete package from Google Sheets.');
+        }
+      } catch (err: any) {
+        setIsDeletingPackage(false);
+        showBanner('error', err?.message || 'Error deleting package.');
+      }
     }
   };
 
@@ -347,17 +387,42 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Visa Handlers
   // -------------------------------------------------------------
   const handleSaveVisaSubmit = async (visaData: VisaService) => {
-    await sheetsService.saveVisa(visaData);
-    setEditingVisa(null);
-    setIsAddingVisa(false);
-    onRefresh();
+    setIsSavingVisa(true);
+    setVisaSaveError(null);
+    try {
+      const res = await sheetsService.saveVisa(visaData);
+      setIsSavingVisa(false);
+      if (res.success) {
+        setEditingVisa(null);
+        setIsAddingVisa(false);
+        onRefresh();
+        showBanner('success', res.message || 'Visa service saved and synced to Google Sheets database!');
+      } else {
+        setVisaSaveError(res.error || res.message || 'Failed to save visa service to Google Sheets.');
+      }
+    } catch (err: any) {
+      setIsSavingVisa(false);
+      setVisaSaveError(err?.message || 'Error saving visa service to Google Sheets.');
+    }
   };
 
   const confirmDeleteVisa = async () => {
     if (visaToDelete) {
-      await sheetsService.deleteVisa(visaToDelete.id);
-      setVisaToDelete(null);
-      onRefresh();
+      setIsDeletingVisa(true);
+      try {
+        const res = await sheetsService.deleteVisa(visaToDelete.id);
+        setIsDeletingVisa(false);
+        setVisaToDelete(null);
+        onRefresh();
+        if (res.success) {
+          showBanner('success', res.message || 'Visa service deleted from Google Sheets database.');
+        } else {
+          showBanner('error', res.error || res.message || 'Failed to delete visa service.');
+        }
+      } catch (err: any) {
+        setIsDeletingVisa(false);
+        showBanner('error', err?.message || 'Error deleting visa.');
+      }
     }
   };
 
@@ -1248,6 +1313,84 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </form>
           </div>
 
+          {/* Vercel & Custom Domain Live Database Configuration */}
+          <div className="bg-linear-to-br from-indigo-50/80 via-blue-50/50 to-slate-50 rounded-2xl border border-blue-200 p-6 sm:p-8">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 rounded-xl bg-blue-600 text-white shrink-0 shadow-sm mt-0.5">
+                  <Globe className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-slate-900">
+                      Vercel & Custom Domain Instant Sync Guide
+                    </h3>
+                    {(import.meta as any)?.env?.VITE_GOOGLE_SHEETS_WEB_APP_URL ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        Vercel Env Variable Active
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold border border-amber-300">
+                        Browser Storage Active
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed max-w-2xl">
+                    When you host on Vercel with your custom domain, holiday packages and visa services should fetch and save directly to your Google Sheets database so all admins and visitors see real-time data across all devices and sessions.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const val = `VITE_GOOGLE_SHEETS_WEB_APP_URL=${(webAppUrlInput || sheetsConfig.webAppUrl || '').trim()}`;
+                  navigator.clipboard.writeText(val);
+                  setCopiedEnvVar(true);
+                  setTimeout(() => setCopiedEnvVar(false), 2500);
+                }}
+                disabled={!webAppUrlInput && !sheetsConfig.webAppUrl}
+                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer disabled:cursor-not-allowed"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>{copiedEnvVar ? 'Copied Env Line!' : 'Copy Vercel Env Variable'}</span>
+              </button>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-blue-200/70 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-xl border border-blue-100 space-y-1">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] flex items-center justify-center font-bold">1</span>
+                  Copy Web App URL
+                </div>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Deploy your Apps Script with "Execute as: Me" and "Who has access: Anyone". Copy the <code className="text-blue-600 font-mono">/exec</code> URL.
+                </p>
+              </div>
+
+              <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-xl border border-blue-100 space-y-1">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] flex items-center justify-center font-bold">2</span>
+                  Add to Vercel Settings
+                </div>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Go to Vercel Dashboard → Your Project → Settings → Environment Variables. Add key <code className="text-blue-600 font-mono">VITE_GOOGLE_SHEETS_WEB_APP_URL</code>.
+                </p>
+              </div>
+
+              <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-xl border border-blue-100 space-y-1">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] flex items-center justify-center font-bold">3</span>
+                  Redeploy on Custom Domain
+                </div>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Trigger a redeploy. Your site on your custom domain will now communicate directly with Google Sheets as its live database!
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Setup Guide */}
           <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 sm:p-8 space-y-4">
             <div className="flex items-center justify-between">
@@ -1628,8 +1771,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           onClose={() => {
             setEditingPackage(null);
             setIsAddingPackage(false);
+            setPackageSaveError(null);
           }}
           onSave={handleSavePackageSubmit}
+          isSaving={isSavingPackage}
+          syncError={packageSaveError}
+          onOpenSheetsSettings={() => setAdminTab('sheets')}
         />
       )}
 
@@ -1642,8 +1789,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           onClose={() => {
             setEditingVisa(null);
             setIsAddingVisa(false);
+            setVisaSaveError(null);
           }}
           onSave={handleSaveVisaSubmit}
+          isSaving={isSavingVisa}
+          syncError={visaSaveError}
+          onOpenSheetsSettings={() => setAdminTab('sheets')}
         />
       )}
 
@@ -1660,21 +1811,30 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <h3 className="text-lg font-bold text-slate-900">Delete Holiday Package?</h3>
               <p className="text-xs text-slate-500 mt-1">
                 Are you sure you want to delete <strong className="text-slate-800">"{packageToDelete.title}"</strong>? 
-                This package will be permanently deleted from the database.
+                This package will be permanently deleted from the Google Sheets database.
               </p>
             </div>
             <div className="flex gap-3 pt-2">
               <button
+                disabled={isDeletingPackage}
                 onClick={() => setPackageToDelete(null)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100"
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                disabled={isDeletingPackage}
                 onClick={confirmDeletePackage}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm"
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                Delete Package
+                {isDeletingPackage ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting from Sheets...</span>
+                  </>
+                ) : (
+                  <span>Delete Package</span>
+                )}
               </button>
             </div>
           </div>
@@ -1694,23 +1854,58 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <h3 className="text-lg font-bold text-slate-900">Delete Visa Service?</h3>
               <p className="text-xs text-slate-500 mt-1">
                 Are you sure you want to delete <strong className="text-slate-800">"{visaToDelete.country} - {visaToDelete.visaType}"</strong>? 
-                This service offering will be removed from the database.
+                This service offering will be removed from the Google Sheets database.
               </p>
             </div>
             <div className="flex gap-3 pt-2">
               <button
+                disabled={isDeletingVisa}
                 onClick={() => setVisaToDelete(null)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100"
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                disabled={isDeletingVisa}
                 onClick={confirmDeleteVisa}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm"
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                Delete Visa
+                {isDeletingVisa ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting from Sheets...</span>
+                  </>
+                ) : (
+                  <span>Delete Visa</span>
+                )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Banner */}
+      {actionBanner && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md animate-bounce">
+          <div
+            className={`p-4 rounded-2xl shadow-xl flex items-center gap-3 border ${
+              actionBanner.type === 'success'
+                ? 'bg-emerald-600 text-white border-emerald-500'
+                : 'bg-rose-600 text-white border-rose-500'
+            }`}
+          >
+            {actionBanner.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+            )}
+            <span className="text-xs font-bold leading-relaxed">{actionBanner.text}</span>
+            <button
+              onClick={() => setActionBanner(null)}
+              className="ml-auto p-1 text-white/80 hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
@@ -1725,9 +1920,19 @@ interface PackageFormModalProps {
   pkg: HolidayPackage | null;
   onClose: () => void;
   onSave: (pkg: HolidayPackage) => void;
+  isSaving?: boolean;
+  syncError?: string | null;
+  onOpenSheetsSettings?: () => void;
 }
 
-const PackageFormModal: React.FC<PackageFormModalProps> = ({ pkg, onClose, onSave }) => {
+const PackageFormModal: React.FC<PackageFormModalProps> = ({
+  pkg,
+  onClose,
+  onSave,
+  isSaving = false,
+  syncError = null,
+  onOpenSheetsSettings,
+}) => {
   const [title, setTitle] = useState(pkg?.title || '');
   const [destination, setDestination] = useState(pkg?.destination || '');
   const [country, setCountry] = useState(pkg?.country || '');
@@ -1793,6 +1998,28 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({ pkg, onClose, onSav
         <h2 className="text-xl font-bold text-slate-900 mb-4">
           {pkg ? 'Edit Holiday Package' : 'Create New Holiday Package'}
         </h2>
+
+        {syncError && (
+          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-bold">Google Sheets Sync Notice</div>
+              <div className="mt-0.5 leading-relaxed">{syncError}</div>
+              {onOpenSheetsSettings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenSheetsSettings();
+                  }}
+                  className="mt-2 inline-flex items-center gap-1 font-semibold text-rose-900 underline hover:no-underline cursor-pointer"
+                >
+                  Configure Google Sheets Connection Settings →
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div>
@@ -1930,16 +2157,25 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({ pkg, onClose, onSav
           <div className="pt-4 flex justify-end gap-2">
             <button
               type="button"
+              disabled={isSaving}
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold"
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold disabled:opacity-50 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-6 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm"
+              disabled={isSaving}
+              className="px-6 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold shadow-sm flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
-              Save Package
+              {isSaving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Syncing to Google Sheets...</span>
+                </>
+              ) : (
+                <span>Save Package</span>
+              )}
             </button>
           </div>
         </form>
@@ -1955,9 +2191,19 @@ interface VisaFormModalProps {
   visa: VisaService | null;
   onClose: () => void;
   onSave: (visa: VisaService) => void;
+  isSaving?: boolean;
+  syncError?: string | null;
+  onOpenSheetsSettings?: () => void;
 }
 
-const VisaFormModal: React.FC<VisaFormModalProps> = ({ visa, onClose, onSave }) => {
+const VisaFormModal: React.FC<VisaFormModalProps> = ({
+  visa,
+  onClose,
+  onSave,
+  isSaving = false,
+  syncError = null,
+  onOpenSheetsSettings,
+}) => {
   const [country, setCountry] = useState(visa?.country || '');
   const [countryCode, setCountryCode] = useState(visa?.countryCode || 'US');
   const [flagEmoji, setFlagEmoji] = useState(visa?.flagEmoji || '🇺🇸');
@@ -2017,6 +2263,28 @@ const VisaFormModal: React.FC<VisaFormModalProps> = ({ visa, onClose, onSave }) 
         <h2 className="text-xl font-bold text-slate-900 mb-4">
           {visa ? 'Edit Visa Offering' : 'Add New Visa Service'}
         </h2>
+
+        {syncError && (
+          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-bold">Google Sheets Sync Notice</div>
+              <div className="mt-0.5 leading-relaxed">{syncError}</div>
+              {onOpenSheetsSettings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenSheetsSettings();
+                  }}
+                  className="mt-2 inline-flex items-center gap-1 font-semibold text-rose-900 underline hover:no-underline cursor-pointer"
+                >
+                  Configure Google Sheets Connection Settings →
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div className="grid grid-cols-3 gap-3">
@@ -2133,16 +2401,25 @@ const VisaFormModal: React.FC<VisaFormModalProps> = ({ visa, onClose, onSave }) 
           <div className="pt-4 flex justify-end gap-2">
             <button
               type="button"
+              disabled={isSaving}
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold"
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold disabled:opacity-50 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm"
+              disabled={isSaving}
+              className="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold shadow-sm flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
-              Save Visa Offering
+              {isSaving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Syncing to Google Sheets...</span>
+                </>
+              ) : (
+                <span>Save Visa Offering</span>
+              )}
             </button>
           </div>
         </form>

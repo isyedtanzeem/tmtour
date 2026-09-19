@@ -90,6 +90,36 @@ function handleRequest(e) {
       }
     }
     
+    // Support GET query parameters or URL-encoded inputs
+    if (params.data && !postData.data) {
+      try {
+        postData.data = typeof params.data === "string" ? JSON.parse(params.data) : params.data;
+      } catch (parseErr) {
+        postData.data = params.data;
+      }
+    }
+    if (params.payload && !postData.data) {
+      try {
+        var parsedPayload = typeof params.payload === "string" ? JSON.parse(params.payload) : params.payload;
+        if (parsedPayload.data) postData.data = parsedPayload.data;
+        if (parsedPayload.id) postData.id = parsedPayload.id;
+        if (parsedPayload.action && !action) action = parsedPayload.action;
+      } catch (e) {}
+    }
+    if (params.id && !postData.id) {
+      postData.id = params.id;
+    }
+    if (params.status && !postData.status) {
+      postData.status = params.status;
+    }
+    if (params.notificationEmails && !postData.notificationEmails) {
+      try {
+        postData.notificationEmails = typeof params.notificationEmails === "string" 
+          ? JSON.parse(params.notificationEmails) 
+          : params.notificationEmails;
+      } catch(e) {}
+    }
+    
     var response = { 
       success: true, 
       timestamp: new Date().toISOString(),
@@ -116,24 +146,29 @@ function handleRequest(e) {
     // ----------------- PACKAGES CRUD -----------------
     else if (action === "savePackage") {
       response.item = upsertRecord(ss.getSheetByName(SHEET_PACKAGES), postData.data);
+      response.packages = getSheetRecords(ss.getSheetByName(SHEET_PACKAGES));
     }
     else if (action === "deletePackage") {
       var idToDelete = postData.id || params.id;
       response.deleted = deleteRecordById(ss.getSheetByName(SHEET_PACKAGES), idToDelete);
+      response.packages = getSheetRecords(ss.getSheetByName(SHEET_PACKAGES));
     }
     
     // ----------------- VISAS CRUD -----------------
     else if (action === "saveVisa") {
       response.item = upsertRecord(ss.getSheetByName(SHEET_VISAS), postData.data);
+      response.visas = getSheetRecords(ss.getSheetByName(SHEET_VISAS));
     }
     else if (action === "deleteVisa") {
       var idToDeleteVisa = postData.id || params.id;
       response.deleted = deleteRecordById(ss.getSheetByName(SHEET_VISAS), idToDeleteVisa);
+      response.visas = getSheetRecords(ss.getSheetByName(SHEET_VISAS));
     }
     
     // ----------------- BOOKING INQUIRY + EMAIL ALERT -----------------
     else if (action === "createBooking") {
       response.item = appendRecord(ss.getSheetByName(SHEET_BOOKINGS), postData.data);
+      response.bookings = getSheetRecords(ss.getSheetByName(SHEET_BOOKINGS));
       
       // Determine recipient list (merge client configured recipients with fallback)
       var recipients = resolveRecipients(postData.notificationEmails);
@@ -151,6 +186,7 @@ function handleRequest(e) {
     // ----------------- VISA APPLICATION + EMAIL ALERT -----------------
     else if (action === "createVisaApplication") {
       response.item = appendRecord(ss.getSheetByName(SHEET_APPLICATIONS), postData.data);
+      response.applications = getSheetRecords(ss.getSheetByName(SHEET_APPLICATIONS));
       
       // Determine recipient list
       var recipientsVisa = resolveRecipients(postData.notificationEmails);
@@ -168,9 +204,11 @@ function handleRequest(e) {
     // ----------------- STATUS UPDATES -----------------
     else if (action === "updateBookingStatus") {
       response.updated = updateRecordField(ss.getSheetByName(SHEET_BOOKINGS), postData.id, "status", postData.status);
+      response.bookings = getSheetRecords(ss.getSheetByName(SHEET_BOOKINGS));
     }
     else if (action === "updateApplicationStatus") {
       response.updated = updateRecordField(ss.getSheetByName(SHEET_APPLICATIONS), postData.id, "status", postData.status);
+      response.applications = getSheetRecords(ss.getSheetByName(SHEET_APPLICATIONS));
     }
     
     // ----------------- TEST EMAIL TRIGGER -----------------

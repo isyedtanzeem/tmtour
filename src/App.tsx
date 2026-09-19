@@ -175,11 +175,18 @@ export default function App() {
       }
     });
 
+    const unsubSheets = sheetsService.subscribe(() => {
+      loadData();
+    });
+
     const unsubAuth = adminAuthService.subscribe(() => {
       setAdminUser(adminAuthService.getCurrentUser());
     });
 
-    return () => unsubAuth();
+    return () => {
+      unsubSheets();
+      unsubAuth();
+    };
   }, [loadData]);
 
   const handleSearchPackages = (destination: string, category: string) => {

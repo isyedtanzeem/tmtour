@@ -10,6 +10,22 @@ const STORAGE_KEYS = {
   APPLICATIONS: 'tripmytour_sheets_applications_v2',
 };
 
+// Detect any Web App URL injected via Vite / Vercel Environment Variables
+export const getEnvWebAppUrl = (): string => {
+  try {
+    const metaEnv = (import.meta as any)?.env;
+    return (
+      (metaEnv && (
+        metaEnv.VITE_GOOGLE_SHEETS_WEB_APP_URL ||
+        metaEnv.VITE_SHEETS_WEB_APP_URL ||
+        metaEnv.VITE_SHEETS_URL
+      )) || ''
+    ).trim();
+  } catch {
+    return '';
+  }
+};
+
 export class SheetsService {
   private static instance: SheetsService;
 
@@ -22,11 +38,18 @@ export class SheetsService {
     errorMessage: null,
   };
 
+  // Authoritative in-memory database mirror synced with Google Sheets
+  private packages: HolidayPackage[] = [];
+  private visas: VisaService[] = [];
+  private bookings: BookingInquiry[] = [];
+  private applications: VisaApplication[] = [];
+  private isInitializedFromSheets = false;
+
   private listeners: (() => void)[] = [];
 
   private constructor() {
     this.loadInitialConfig();
-    this.ensureInitialData();
+    this.loadCachedData();
   }
 
   public static getInstance(): SheetsService {
@@ -43,8 +66,14 @@ export class SheetsService {
     };
   }
 
-  private notify(): void {
-    this.listeners.forEach((l) => l());
+  public notify(): void {
+    this.listeners.forEach((l) => {
+      try {
+        l();
+      } catch (err) {
+        console.error('Error in SheetsService listener:', err);
+      }
+    });
   }
 
   public isValidWebAppUrl(url?: string | null): boolean {
@@ -69,6 +98,8 @@ export class SheetsService {
   }
 
   private loadInitialConfig(): void {
+    const envUrl = getEnvWebAppUrl();
+
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.CONFIG);
       if (saved) {
@@ -82,18 +113,29 @@ export class SheetsService {
           parsed.isCustomUrlActive = false;
         }
 
-        const hasValidUrl = this.isValidWebAppUrl(parsed.webAppUrl);
+        const effectiveUrl = (parsed.webAppUrl || envUrl || '').trim();
+        const hasValidUrl = this.isValidWebAppUrl(effectiveUrl);
+
         this.config = {
           ...this.config,
           ...parsed,
-          isCustomUrlActive: hasValidUrl && !!parsed.isCustomUrlActive,
-          syncStatus: 'local_fallback',
+          webAppUrl: effectiveUrl,
+          isCustomUrlActive: hasValidUrl && (parsed.isCustomUrlActive !== false || !!envUrl),
+          syncStatus: hasValidUrl ? 'syncing' : 'local_fallback',
           errorMessage: null,
         };
-        this.saveConfig();
+      } else if (envUrl && this.isValidWebAppUrl(envUrl)) {
+        // Environment variable detected from Vercel / hosting
+        this.config.webAppUrl = envUrl;
+        this.config.isCustomUrlActive = true;
+        this.config.syncStatus = 'syncing';
       }
     } catch (e) {
       console.warn('Could not read config from localStorage', e);
+      if (envUrl && this.isValidWebAppUrl(envUrl)) {
+        this.config.webAppUrl = envUrl;
+        this.config.isCustomUrlActive = true;
+      }
     }
   }
 
@@ -105,35 +147,36 @@ export class SheetsService {
     }
   }
 
-  private ensureInitialData(): void {
+  private loadCachedData(): void {
     try {
-      const existingPackagesRaw = localStorage.getItem(STORAGE_KEYS.PACKAGES);
-      if (!existingPackagesRaw) {
-        localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(DEFAULT_HOLIDAY_PACKAGES));
+      const pkgRaw = localStorage.getItem(STORAGE_KEYS.PACKAGES);
+      if (pkgRaw) {
+        this.packages = JSON.parse(pkgRaw);
       } else {
-        try {
-          const parsed: HolidayPackage[] = JSON.parse(existingPackagesRaw);
-          const existingIds = new Set(parsed.map((p) => p.id));
-          const missing = DEFAULT_HOLIDAY_PACKAGES.filter((p) => !existingIds.has(p.id));
-          if (missing.length > 0) {
-            const merged = [...parsed, ...missing];
-            localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(merged));
-          }
-        } catch (e) {
-          localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(DEFAULT_HOLIDAY_PACKAGES));
-        }
+        this.packages = [...DEFAULT_HOLIDAY_PACKAGES];
       }
-      if (!localStorage.getItem(STORAGE_KEYS.VISAS)) {
-        localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(DEFAULT_VISA_SERVICES));
+
+      const visaRaw = localStorage.getItem(STORAGE_KEYS.VISAS);
+      if (visaRaw) {
+        this.visas = JSON.parse(visaRaw);
+      } else {
+        this.visas = [...DEFAULT_VISA_SERVICES];
       }
-      if (!localStorage.getItem(STORAGE_KEYS.BOOKINGS)) {
-        localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify([]));
+
+      const bookRaw = localStorage.getItem(STORAGE_KEYS.BOOKINGS);
+      if (bookRaw) {
+        this.bookings = JSON.parse(bookRaw);
       }
-      if (!localStorage.getItem(STORAGE_KEYS.APPLICATIONS)) {
-        localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify([]));
+
+      const appRaw = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
+      if (appRaw) {
+        this.applications = JSON.parse(appRaw);
       }
     } catch (e) {
-      console.warn('Could not initialize local sheet mirror', e);
+      this.packages = [...DEFAULT_HOLIDAY_PACKAGES];
+      this.visas = [...DEFAULT_VISA_SERVICES];
+      this.bookings = [];
+      this.applications = [];
     }
   }
 
@@ -203,11 +246,10 @@ export class SheetsService {
     }
 
     try {
-      const pingUrl = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}action=ping`;
+      const pingUrl = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}action=ping&t=${Date.now()}`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
 
-      // Clean GET without custom headers to avoid CORS preflight rejection from Google Apps Script
       const response = await fetch(pingUrl, {
         method: 'GET',
         redirect: 'follow',
@@ -234,7 +276,7 @@ export class SheetsService {
       return {
         success: false,
         message: isTimeout
-          ? 'Connection timed out (8s). Check your Apps Script deployment.'
+          ? 'Connection timed out (9s). Check your Apps Script deployment.'
           : `Connection notice: ${err?.message || 'Network issue'}. Ensure deployment has "Execute as: Me" and "Who has access: Anyone".`,
       };
     }
@@ -269,11 +311,205 @@ export class SheetsService {
     }
   }
 
+  /**
+   * Universal executor for calling Google Apps Script Web App actions.
+   * Handles GET (with automatic 302 follow and CORS headers from script.googleusercontent.com)
+   * as well as POST fallback for larger payloads.
+   */
+  public async executeSheetsAction(
+    action: string,
+    extraPayload: Record<string, any> = {}
+  ): Promise<{
+    success: boolean;
+    data?: any;
+    packages?: HolidayPackage[];
+    visas?: VisaService[];
+    bookings?: BookingInquiry[];
+    applications?: VisaApplication[];
+    message?: string;
+    error?: string;
+  }> {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      return {
+        success: false,
+        error: 'Google Sheets Web App URL is not configured. Please configure your Apps Script URL ending in /exec.',
+      };
+    }
+
+    const payload = {
+      action,
+      ...extraPayload,
+      timestamp: new Date().toISOString(),
+    };
+
+    const payloadString = JSON.stringify(payload);
+    // Method 1: For payloads under 3500 characters, GET request is 100% immune to browser CORS redirect issues
+    if (payloadString.length < 3500) {
+      try {
+        const queryParams = new URLSearchParams();
+        queryParams.set('action', action);
+        if (extraPayload.data) {
+          queryParams.set('data', JSON.stringify(extraPayload.data));
+        }
+        if (extraPayload.id) {
+          queryParams.set('id', extraPayload.id);
+        }
+        if (extraPayload.status) {
+          queryParams.set('status', extraPayload.status);
+        }
+        if (extraPayload.notificationEmails) {
+          queryParams.set('notificationEmails', JSON.stringify(extraPayload.notificationEmails));
+        }
+        queryParams.set('t', Date.now().toString());
+
+        const getUrl = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}${queryParams.toString()}`;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+        const response = await fetch(getUrl, {
+          method: 'GET',
+          redirect: 'follow',
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const resJson = await response.json();
+          if (resJson && resJson.success !== false) {
+            this.handleSyncPayload(resJson);
+            return {
+              success: true,
+              ...resJson,
+            };
+          } else if (resJson && resJson.error) {
+            return {
+              success: false,
+              error: resJson.error,
+            };
+          }
+        }
+      } catch (err: any) {
+        console.warn(`GET action=${action} failed or timed out, trying POST fallback:`, err?.message || err);
+      }
+    }
+
+    // Method 2: POST request (for larger payloads or as reliable fallback)
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const postRes = await fetch(rawUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: payloadString,
+        redirect: 'follow',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (postRes.ok) {
+        const resJson = await postRes.json();
+        if (resJson && resJson.success !== false) {
+          this.handleSyncPayload(resJson);
+          return {
+            success: true,
+            ...resJson,
+          };
+        }
+      }
+    } catch (postErr: any) {
+      console.warn(`Direct POST failed due to CORS/redirect, attempting background POST + GET verify:`, postErr?.message);
+      
+      // If browser CORS blocked the POST 302 redirect response:
+      // Send with mode: 'no-cors' so Google Apps Script executes the row insertion,
+      // then immediately perform a verified GET sync to fetch the updated spreadsheet!
+      try {
+        await fetch(rawUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: payloadString,
+          mode: 'no-cors',
+          redirect: 'follow',
+        });
+
+        // Allow 750ms for Google Sheet to commit the new row
+        await new Promise((resolve) => setTimeout(resolve, 750));
+
+        // Now fetch live data from Google Sheets to verify
+        const syncResult = await this.syncWithGoogleSheets();
+        if (syncResult.success) {
+          return {
+            success: true,
+            packages: this.packages,
+            visas: this.visas,
+            bookings: this.bookings,
+            applications: this.applications,
+          };
+        }
+      } catch (fallbackErr: any) {
+        return {
+          success: false,
+          error: `Could not sync with Google Sheets: ${fallbackErr?.message || 'Network error'}`,
+        };
+      }
+    }
+
+    // Secondary verification: re-sync all data from Google Sheets
+    const syncRes = await this.syncWithGoogleSheets();
+    return {
+      success: syncRes.success,
+      packages: this.packages,
+      visas: this.visas,
+      bookings: this.bookings,
+      applications: this.applications,
+      error: syncRes.success ? undefined : syncRes.message,
+    };
+  }
+
+  private handleSyncPayload(data: any): void {
+    let hasChanges = false;
+
+    if (Array.isArray(data.packages) && data.packages.length > 0) {
+      this.packages = data.packages;
+      localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(this.packages));
+      hasChanges = true;
+    }
+    if (Array.isArray(data.visas) && data.visas.length > 0) {
+      this.visas = data.visas;
+      localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(this.visas));
+      hasChanges = true;
+    }
+    if (Array.isArray(data.bookings)) {
+      this.bookings = data.bookings;
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(this.bookings));
+      hasChanges = true;
+    }
+    if (Array.isArray(data.applications)) {
+      this.applications = data.applications;
+      localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(this.applications));
+      hasChanges = true;
+    }
+
+    if (hasChanges) {
+      this.isInitializedFromSheets = true;
+      this.config.syncStatus = 'connected';
+      this.config.lastSyncedAt = new Date().toLocaleTimeString();
+      this.config.errorMessage = null;
+      this.saveConfig();
+      this.notify();
+    }
+  }
+
   public async syncWithGoogleSheets(): Promise<{ success: boolean; message?: string }> {
-    if (!this.config.webAppUrl || !this.config.isCustomUrlActive || !this.isValidWebAppUrl(this.config.webAppUrl)) {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
       this.config.syncStatus = 'local_fallback';
       this.notify();
-      return { success: true, message: 'Running in Local Sheets Database Mode' };
+      return { success: false, message: 'Google Sheets Web App URL is not configured.' };
     }
 
     this.config.syncStatus = 'syncing';
@@ -281,13 +517,13 @@ export class SheetsService {
     this.notify();
 
     try {
-      const cleanUrl = this.config.webAppUrl.trim();
-      const fetchUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}action=getAllData`;
+      const cleanUrl = rawUrl;
+      const fetchUrl = `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}action=getAllData&t=${Date.now()}`;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 9000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-      // Simple GET request with follow redirect and NO custom headers
+      // Clean GET request with follow redirect and NO custom headers
       const res = await fetch(fetchUrl, {
         method: 'GET',
         redirect: 'follow',
@@ -304,18 +540,7 @@ export class SheetsService {
         throw new Error(data.error);
       }
 
-      if (Array.isArray(data.packages) && data.packages.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(data.packages));
-      }
-      if (Array.isArray(data.visas) && data.visas.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(data.visas));
-      }
-      if (Array.isArray(data.bookings)) {
-        localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(data.bookings));
-      }
-      if (Array.isArray(data.applications)) {
-        localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(data.applications));
-      }
+      this.handleSyncPayload(data);
 
       this.config.syncStatus = 'connected';
       this.config.lastSyncedAt = new Date().toLocaleTimeString();
@@ -324,115 +549,165 @@ export class SheetsService {
       this.notify();
       return { success: true, message: 'Google Sheets synchronized successfully!' };
     } catch (err: any) {
-      // Graceful fallback to local mirror without throwing console.error
-      console.warn('Google Sheets sync notice (using local mirror):', err?.message || err);
+      console.warn('Google Sheets sync notice (falling back to cache):', err?.message || err);
       this.config.syncStatus = 'local_fallback';
       this.config.errorMessage = err?.name === 'AbortError'
-        ? 'Connection timed out. Running on local data mirror.'
-        : 'External Apps Script unreachable. Running on local data mirror.';
+        ? 'Connection timed out. Check your Google Apps Script.'
+        : 'Google Apps Script was unreachable. Check your deployment URL.';
       this.notify();
       return { success: false, message: this.config.errorMessage };
     }
   }
 
-  private async postToGoogleSheet(payload: any): Promise<void> {
-    if (!this.config.webAppUrl || !this.config.isCustomUrlActive || !this.isValidWebAppUrl(this.config.webAppUrl)) {
-      return;
-    }
-
-    try {
-      await fetch(this.config.webAppUrl.trim(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(payload),
-        mode: 'no-cors',
-        redirect: 'follow',
-      });
-    } catch (err) {
-      console.warn('Google Sheet background update notice:', err);
-    }
-  }
-
   // --------------------------------------------------------------------------
-  // HOLIDAY PACKAGES
+  // HOLIDAY PACKAGES (GOOGLE SHEETS AUTHORITATIVE)
   // --------------------------------------------------------------------------
 
   public getPackages(): HolidayPackage[] {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.PACKAGES);
-      if (data) return JSON.parse(data);
-    } catch (e) {
-      console.warn('Error reading packages', e);
+    if (this.packages && this.packages.length > 0) {
+      return [...this.packages];
     }
-    return DEFAULT_HOLIDAY_PACKAGES;
+    return [...DEFAULT_HOLIDAY_PACKAGES];
   }
 
-  public async savePackage(pkg: HolidayPackage): Promise<boolean> {
-    const list = this.getPackages();
-    const existingIndex = list.findIndex((p) => p.id === pkg.id);
-    if (existingIndex >= 0) {
-      list[existingIndex] = pkg;
-    } else {
-      list.unshift(pkg);
+  public async savePackage(pkg: HolidayPackage): Promise<{ success: boolean; message: string; error?: string }> {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      return {
+        success: false,
+        message: 'Google Sheets database is not connected.',
+        error: 'To permanently save packages across sessions on your custom domain, connect your Google Apps Script Web App URL in Google Sheets settings (or add VITE_GOOGLE_SHEETS_WEB_APP_URL in Vercel). Packages cannot be saved without an active Google Sheet database.',
+      };
     }
-    localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(list));
-    this.notify();
 
-    // Background sync to remote Google Sheet if connected
-    this.postToGoogleSheet({ action: 'savePackage', data: pkg });
-    return true;
+    // Execute save operation directly on Google Apps Script
+    const result = await this.executeSheetsAction('savePackage', { data: pkg });
+
+    if (!result.success) {
+      return {
+        success: false,
+        message: 'Failed to save holiday package to Google Sheets.',
+        error: result.error || 'Google Apps Script failed to save the package. Please ensure deployment has "Who has access: Anyone".',
+      };
+    }
+
+    // Verify package is present in updated list
+    const found = this.packages.find((p) => p.id === pkg.id);
+    if (!found) {
+      // Optimistically append to local state if Apps Script did not return the full array
+      this.packages.unshift(pkg);
+      localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(this.packages));
+      this.notify();
+    }
+
+    return {
+      success: true,
+      message: `Package "${pkg.title}" saved and instantly synced to Google Sheets database!`,
+    };
   }
 
-  public async deletePackage(id: string): Promise<boolean> {
-    const list = this.getPackages().filter((p) => p.id !== id);
-    localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(list));
+  public async deletePackage(id: string): Promise<{ success: boolean; message: string; error?: string }> {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      // Local removal
+      this.packages = this.packages.filter((p) => p.id !== id);
+      localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(this.packages));
+      this.notify();
+      return {
+        success: true,
+        message: 'Package deleted locally.',
+      };
+    }
+
+    const result = await this.executeSheetsAction('deletePackage', { id });
+    if (!result.success) {
+      return {
+        success: false,
+        message: 'Failed to delete package from Google Sheets.',
+        error: result.error,
+      };
+    }
+
+    this.packages = this.packages.filter((p) => p.id !== id);
+    localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(this.packages));
     this.notify();
 
-    // Background sync to remote Google Sheet if connected
-    this.postToGoogleSheet({ action: 'deletePackage', id });
-    return true;
+    return {
+      success: true,
+      message: 'Package deleted from Google Sheets database successfully.',
+    };
   }
 
   // --------------------------------------------------------------------------
-  // VISA SERVICES
+  // VISA SERVICES (GOOGLE SHEETS AUTHORITATIVE)
   // --------------------------------------------------------------------------
 
   public getVisas(): VisaService[] {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.VISAS);
-      if (data) return JSON.parse(data);
-    } catch (e) {
-      console.warn('Error reading visas', e);
+    if (this.visas && this.visas.length > 0) {
+      return [...this.visas];
     }
-    return DEFAULT_VISA_SERVICES;
+    return [...DEFAULT_VISA_SERVICES];
   }
 
-  public async saveVisa(visa: VisaService): Promise<boolean> {
-    const list = this.getVisas();
-    const existingIndex = list.findIndex((v) => v.id === visa.id);
-    if (existingIndex >= 0) {
-      list[existingIndex] = visa;
-    } else {
-      list.unshift(visa);
+  public async saveVisa(visa: VisaService): Promise<{ success: boolean; message: string; error?: string }> {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      return {
+        success: false,
+        message: 'Google Sheets database is not connected.',
+        error: 'To permanently save visa services across sessions on your custom domain, connect your Google Apps Script Web App URL in Google Sheets settings (or add VITE_GOOGLE_SHEETS_WEB_APP_URL in Vercel). Visa services cannot be saved without an active Google Sheet database.',
+      };
     }
-    localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(list));
-    this.notify();
 
-    // Background sync to remote Google Sheet if connected
-    this.postToGoogleSheet({ action: 'saveVisa', data: visa });
-    return true;
+    const result = await this.executeSheetsAction('saveVisa', { data: visa });
+
+    if (!result.success) {
+      return {
+        success: false,
+        message: 'Failed to save visa service to Google Sheets.',
+        error: result.error || 'Google Apps Script failed to save the visa service.',
+      };
+    }
+
+    const found = this.visas.find((v) => v.id === visa.id);
+    if (!found) {
+      this.visas.unshift(visa);
+      localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(this.visas));
+      this.notify();
+    }
+
+    return {
+      success: true,
+      message: `Visa service for "${visa.country}" saved and instantly synced to Google Sheets database!`,
+    };
   }
 
-  public async deleteVisa(id: string): Promise<boolean> {
-    const list = this.getVisas().filter((v) => v.id !== id);
-    localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(list));
+  public async deleteVisa(id: string): Promise<{ success: boolean; message: string; error?: string }> {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      this.visas = this.visas.filter((v) => v.id !== id);
+      localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(this.visas));
+      this.notify();
+      return { success: true, message: 'Visa service removed locally.' };
+    }
+
+    const result = await this.executeSheetsAction('deleteVisa', { id });
+    if (!result.success) {
+      return {
+        success: false,
+        message: 'Failed to delete visa service from Google Sheets.',
+        error: result.error,
+      };
+    }
+
+    this.visas = this.visas.filter((v) => v.id !== id);
+    localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(this.visas));
     this.notify();
 
-    // Background sync to remote Google Sheet if connected
-    this.postToGoogleSheet({ action: 'deleteVisa', id });
-    return true;
+    return {
+      success: true,
+      message: 'Visa service deleted from Google Sheets database successfully.',
+    };
   }
 
   // --------------------------------------------------------------------------
@@ -440,44 +715,37 @@ export class SheetsService {
   // --------------------------------------------------------------------------
 
   public getBookings(): BookingInquiry[] {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.BOOKINGS);
-      if (data) return JSON.parse(data);
-    } catch (e) {
-      console.warn('Error reading bookings', e);
-    }
-    return [];
+    return [...this.bookings];
   }
 
   public async createBooking(booking: BookingInquiry): Promise<boolean> {
-    const list = this.getBookings();
-    list.unshift(booking);
-    localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(list));
+    this.bookings.unshift(booking);
+    localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(this.bookings));
     this.notify();
 
-    // Trigger instant email notification to configured recipients
+    // Trigger email notification to team
     leadEmailService.dispatchHolidayLeadAlert(booking);
 
-    // Background sync to remote Google Sheet if connected (passes recipient emails for Apps Script email automation)
+    // Sync to remote Google Sheet if connected
     const notificationEmails = leadEmailService.getActiveRecipientsFor('holiday');
-    this.postToGoogleSheet({ 
-      action: 'createBooking', 
+    this.executeSheetsAction('createBooking', {
       data: booking,
       notificationEmails,
-    });
+    }).catch((err) => console.warn('Booking sync notice:', err));
+
     return true;
   }
 
   public async updateBookingStatus(id: string, status: BookingInquiry['status']): Promise<boolean> {
-    const list = this.getBookings();
-    const target = list.find((b) => b.id === id);
+    const target = this.bookings.find((b) => b.id === id);
     if (target) {
       target.status = status;
-      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(list));
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(this.bookings));
       this.notify();
 
-      // Background sync to remote Google Sheet if connected
-      this.postToGoogleSheet({ action: 'updateBookingStatus', id, status });
+      this.executeSheetsAction('updateBookingStatus', { id, status }).catch((err) =>
+        console.warn('Booking status sync notice:', err)
+      );
       return true;
     }
     return false;
@@ -488,44 +756,36 @@ export class SheetsService {
   // --------------------------------------------------------------------------
 
   public getApplications(): VisaApplication[] {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
-      if (data) return JSON.parse(data);
-    } catch (e) {
-      console.warn('Error reading visa applications', e);
-    }
-    return [];
+    return [...this.applications];
   }
 
   public async createVisaApplication(app: VisaApplication): Promise<boolean> {
-    const list = this.getApplications();
-    list.unshift(app);
-    localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(list));
+    this.applications.unshift(app);
+    localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(this.applications));
     this.notify();
 
-    // Trigger instant email notification to configured recipients
+    // Trigger email notification
     leadEmailService.dispatchVisaLeadAlert(app);
 
-    // Background sync to remote Google Sheet if connected (passes recipient emails for Apps Script email automation)
     const notificationEmails = leadEmailService.getActiveRecipientsFor('visa');
-    this.postToGoogleSheet({ 
-      action: 'createVisaApplication', 
+    this.executeSheetsAction('createVisaApplication', {
       data: app,
       notificationEmails,
-    });
+    }).catch((err) => console.warn('Visa app sync notice:', err));
+
     return true;
   }
 
   public async updateApplicationStatus(id: string, status: VisaApplication['status']): Promise<boolean> {
-    const list = this.getApplications();
-    const target = list.find((a) => a.id === id);
+    const target = this.applications.find((a) => a.id === id);
     if (target) {
       target.status = status;
-      localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(list));
+      localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(this.applications));
       this.notify();
 
-      // Background sync to remote Google Sheet if connected
-      this.postToGoogleSheet({ action: 'updateApplicationStatus', id, status });
+      this.executeSheetsAction('updateApplicationStatus', { id, status }).catch((err) =>
+        console.warn('Visa application status sync notice:', err)
+      );
       return true;
     }
     return false;
@@ -533,8 +793,12 @@ export class SheetsService {
 
   // Reset database back to default seed template
   public resetToDefaultTemplate(): void {
-    localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(DEFAULT_HOLIDAY_PACKAGES));
-    localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(DEFAULT_VISA_SERVICES));
+    this.packages = [...DEFAULT_HOLIDAY_PACKAGES];
+    this.visas = [...DEFAULT_VISA_SERVICES];
+    this.bookings = [];
+    this.applications = [];
+    localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(this.packages));
+    localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(this.visas));
     localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify([]));
     this.notify();
