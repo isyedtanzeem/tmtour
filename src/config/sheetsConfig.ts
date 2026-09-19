@@ -37,7 +37,7 @@ export interface FileSystemSheetsConfig {
 
 export const FILE_SYSTEM_SHEETS_CONFIG: FileSystemSheetsConfig = {
   // Paste your live Google Apps Script Web App URL below:
-  webAppUrl: '',
+  webAppUrl: 'https://script.google.com/macros/s/AKfycbzp1lktMGo2IygCsudRYw_sCo7nzanWiIb1wcGj7yvhvkLp9DUqUpMua2eV2paslviv6w/exec',
 
   // Optional: Google Spreadsheet Document ID
   sheetId: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
