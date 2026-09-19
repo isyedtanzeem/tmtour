@@ -3,7 +3,7 @@ export const BUSINESS_INFO = {
   shortName: 'TripMyTour',
   portalName: 'TripMyTour',
   tagline: 'Holiday Packages & Visa Services',
-  logoPath: '/logo.png',
+  logoPath: '/logo.svg',
   phone: '098803 71756',
   phoneInternational: '+91 98803 71756',
   phoneRaw: '919880371756',

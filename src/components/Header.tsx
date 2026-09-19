@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Plane, 
   FileCheck, 
@@ -42,17 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currency, setCurrency] = useState('INR (₹)');
-  const [logoUrl, setLogoUrl] = useState<string>(() => {
-    return localStorage.getItem('custom_logo_data') || '/logo.png';
-  });
-
-  useEffect(() => {
-    const handleLogoUpdate = () => {
-      setLogoUrl(localStorage.getItem('custom_logo_data') || `/logo.png?v=${Date.now()}`);
-    };
-    window.addEventListener('logo-updated', handleLogoUpdate);
-    return () => window.removeEventListener('logo-updated', handleLogoUpdate);
-  }, []);
+  const logoUrl = '/logo.svg';
 
   const getSyncBadge = () => {
     if (sheetsConfig.syncStatus === 'connected') {
@@ -152,11 +142,11 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={() => setActiveTab('home')}
           className="flex items-center gap-2.5 text-left group focus:outline-hidden"
         >
-          <div className="h-10 sm:h-12 flex items-center group-hover:opacity-90 transition-opacity">
+          <div className="h-14 sm:h-16 flex items-center group-hover:opacity-90 transition-opacity">
             <img
               src={logoUrl}
               alt="TripMyTour Logo"
-              className="h-9 sm:h-11 w-auto max-w-[190px] sm:max-w-[220px] object-contain"
+              className="h-[80px] sm:h-[80px] w-auto max-w-[440px] sm:max-w-[340px] object-contain"
               referrerPolicy="no-referrer"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';

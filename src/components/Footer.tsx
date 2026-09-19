@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { 
   Compass, 
   FileCheck, 
@@ -20,17 +20,7 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ setActiveTab }) => {
-  const [logoUrl, setLogoUrl] = useState<string>(() => {
-    return localStorage.getItem('custom_logo_data') || '/logo.png';
-  });
-
-  useEffect(() => {
-    const handleLogoUpdate = () => {
-      setLogoUrl(localStorage.getItem('custom_logo_data') || `/logo.png?v=${Date.now()}`);
-    };
-    window.addEventListener('logo-updated', handleLogoUpdate);
-    return () => window.removeEventListener('logo-updated', handleLogoUpdate);
-  }, []);
+  const logoUrl = '/logo.svg';
 
   return (
     <footer className="bg-slate-950 text-slate-400 text-xs border-t border-slate-900 pt-16 pb-12">
@@ -38,11 +28,11 @@ export const Footer: React.FC<FooterProps> = ({ setActiveTab }) => {
         {/* Brand Col */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center gap-2.5 cursor-pointer group" onClick={() => setActiveTab('home')}>
-            <div className="bg-white p-2 rounded-xl shadow-md inline-flex items-center justify-center group-hover:bg-slate-50 transition-colors">
+            <div className="bg-white px-3.5 py-2.5 rounded-2xl shadow-md inline-flex items-center justify-center group-hover:bg-slate-50 transition-colors">
               <img
                 src={logoUrl}
                 alt="TripMyTour Logo"
-                className="h-8 sm:h-9 w-auto max-w-[190px] object-contain"
+                className="h-12 sm:h-[54px] w-auto max-w-[285px] object-contain"
                 referrerPolicy="no-referrer"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
@@ -50,8 +40,8 @@ export const Footer: React.FC<FooterProps> = ({ setActiveTab }) => {
                   if (fallback) fallback.style.display = 'flex';
                 }}
               />
-              <div className="hidden w-8 h-8 bg-blue-600 rounded-lg items-center justify-center text-white">
-                <PlaneTakeoff className="w-4 h-4" />
+              <div className="hidden w-10 h-10 bg-blue-600 rounded-lg items-center justify-center text-white">
+                <PlaneTakeoff className="w-5 h-5" />
               </div>
             </div>
           </div>

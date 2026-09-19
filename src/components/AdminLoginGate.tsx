@@ -76,17 +76,7 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
     }
   };
 
-  const [logoUrl, setLogoUrl] = useState<string>(() => {
-    return localStorage.getItem('custom_logo_data') || '/logo.png';
-  });
-
-  useEffect(() => {
-    const handleLogoUpdate = () => {
-      setLogoUrl(localStorage.getItem('custom_logo_data') || `/logo.png?v=${Date.now()}`);
-    };
-    window.addEventListener('logo-updated', handleLogoUpdate);
-    return () => window.removeEventListener('logo-updated', handleLogoUpdate);
-  }, []);
+  const logoUrl = '/logo.svg';
 
   return (
     <div className="min-h-[85vh] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-100/60">
@@ -114,11 +104,11 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 rounded-full blur-2xl pointer-events-none"></div>
             
             <div className="relative z-10 flex flex-col items-center">
-              <div className="bg-slate-800/90 border border-slate-700 p-2.5 rounded-2xl mb-3 shadow-inner">
+              <div className="bg-white border border-slate-200 px-5 py-2.5 rounded-2xl mb-3 shadow-sm">
                 <img
                   src={logoUrl}
                   alt="TripMyTour"
-                  className="h-9 w-auto max-w-[160px] object-contain"
+                  className="h-[54px] w-auto max-w-[285px] object-contain"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';

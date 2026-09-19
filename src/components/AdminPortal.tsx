@@ -48,53 +48,7 @@ import { adminAuthService } from '../services/adminAuthService';
 import { GOOGLE_APPS_SCRIPT_CODE } from '../services/appsScriptTemplate';
 import { formatCurrency } from '../utils/formatters';
 
-export type AdminTabType = 'packages' | 'visas' | 'bookings' | 'sheets' | 'logo' | 'emails' | 'security' | 'users';
-
-const optimizeLogoImage = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    if (file.type === 'image/svg+xml') {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const maxW = 400;
-        const maxH = 160;
-
-        if (width > maxW || height > maxH) {
-          const ratio = Math.min(maxW / width, maxH / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(e.target?.result as string);
-          return;
-        }
-        ctx.clearRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-        const optimizedDataUrl = canvas.toDataURL('image/png');
-        resolve(optimizedDataUrl);
-      };
-      img.onerror = () => resolve(e.target?.result as string);
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-};
+export type AdminTabType = 'packages' | 'visas' | 'bookings' | 'sheets' | 'emails' | 'security' | 'users';
 
 interface AdminPortalProps {
   packages: HolidayPackage[];
@@ -137,9 +91,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   const canViewEmails = adminAuthService.canView(currentUser || null, 'emailAlerts');
   const canManageEmails = adminAuthService.canManage(currentUser || null, 'emailAlerts');
-
-  const canViewBranding = adminAuthService.canView(currentUser || null, 'branding');
-  const canManageBranding = adminAuthService.canManage(currentUser || null, 'branding');
   const isSuperAdmin = adminAuthService.isSuperAdmin(currentUser || null);
 
   const getInitialTab = (): AdminTabType => {
@@ -149,7 +100,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (adminAuthService.canView(currentUser, 'visas')) return 'visas';
     if (adminAuthService.isSuperAdmin(currentUser)) return 'users';
     if (adminAuthService.canView(currentUser, 'databaseSync')) return 'sheets';
-    if (adminAuthService.canView(currentUser, 'branding')) return 'logo';
     if (adminAuthService.canView(currentUser, 'emailAlerts')) return 'emails';
     return 'security';
   };
@@ -164,7 +114,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         case 'visas': return canViewVisas;
         case 'bookings': return canViewLeads;
         case 'sheets': return canViewSheets;
-        case 'logo': return canViewBranding;
         case 'emails': return canViewEmails;
         case 'users': return isSuperAdmin;
         case 'security': return true;
@@ -175,7 +124,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (!isCurrentTabAllowed()) {
       setAdminTab(getInitialTab());
     }
-  }, [currentUser, canViewPackages, canViewVisas, canViewLeads, canViewSheets, canViewBranding, canManageBranding, canViewEmails, isSuperAdmin, adminTab]);
+  }, [currentUser, canViewPackages, canViewVisas, canViewLeads, canViewSheets, canViewEmails, isSuperAdmin, adminTab]);
   const [copiedDirectUrl, setCopiedDirectUrl] = useState(false);
   const [emailRecipientCount, setEmailRecipientCount] = useState<number>(() => {
     return leadEmailService.getSettings().recipients.filter((r) => r.active).length;
@@ -187,133 +136,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     });
     return () => unsub();
   }, []);
-
-  // Logo management state
-  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string>(() => {
-    return sheetsService.getLogoUrl() || localStorage.getItem('custom_logo_data') || '/logo.png';
-  });
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [isSyncingLogo, setIsSyncingLogo] = useState(false);
-  const [logoMessage, setLogoMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [logoMeta, setLogoMeta] = useState<{ updatedAt?: string; updatedBy?: string }>(() => {
-    return sheetsService.getLogoMeta();
-  });
-
-  // Keep logo preview in sync if updated from external sync or sheet refresh
-  useEffect(() => {
-    const handleLogoUpdate = () => {
-      const current = sheetsService.getLogoUrl() || localStorage.getItem('custom_logo_data') || `/logo.png?v=${Date.now()}`;
-      setLogoPreviewUrl(current);
-      setLogoMeta(sheetsService.getLogoMeta());
-    };
-    window.addEventListener('logo-updated', handleLogoUpdate);
-    return () => window.removeEventListener('logo-updated', handleLogoUpdate);
-  }, []);
-
-  const handleLogoFileUpload = async (file: File) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setLogoMessage({ type: 'error', text: 'Please select a valid image file (PNG, JPG, or SVG).' });
-      return;
-    }
-
-    setIsUploadingLogo(true);
-    setLogoMessage(null);
-
-    try {
-      const dataUrl = await optimizeLogoImage(file);
-
-      // Attempt server backup if endpoint available
-      try {
-        await fetch('/api/upload-logo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataUrl }),
-        });
-      } catch {}
-
-      // Save to Google Sheets database under 'Branding_Settings' tab
-      const uploader = currentUser?.name || currentUser?.username || 'Super Admin';
-      const result = await sheetsService.saveLogoToSheets(dataUrl, uploader);
-
-      setLogoPreviewUrl(dataUrl);
-      setLogoMeta(sheetsService.getLogoMeta());
-
-      if (result.success) {
-        setLogoMessage({
-          type: 'success',
-          text: result.message || "Logo successfully saved to Google Sheets ('Branding_Settings' tab) and broadcast live!",
-        });
-      } else {
-        setLogoMessage({
-          type: 'success',
-          text: result.message || 'Logo saved in browser storage. (Note: ' + (result.error || '') + ')',
-        });
-      }
-    } catch (err: any) {
-      setLogoMessage({
-        type: 'error',
-        text: 'Failed to process and save logo: ' + (err?.message || 'Unknown error'),
-      });
-    } finally {
-      setIsUploadingLogo(false);
-    }
-  };
-
-  const handleSyncLogoFromSheets = async () => {
-    setIsSyncingLogo(true);
-    setLogoMessage(null);
-    try {
-      const res = await sheetsService.syncLogoFromSheets();
-      if (res.success) {
-        if (res.logoUrl) {
-          setLogoPreviewUrl(res.logoUrl);
-          setLogoMeta(sheetsService.getLogoMeta());
-          setLogoMessage({
-            type: 'success',
-            text: "Logo refreshed from Google Sheets ('Branding_Settings' tab)!",
-          });
-        } else {
-          setLogoPreviewUrl('/logo.png');
-          setLogoMeta({});
-          setLogoMessage({
-            type: 'success',
-            text: 'Google Sheets returned default logo state.',
-          });
-        }
-      } else {
-        setLogoMessage({
-          type: 'error',
-          text: res.message || 'Failed to sync logo from Google Sheets.',
-        });
-      }
-    } catch (err: any) {
-      setLogoMessage({
-        type: 'error',
-        text: 'Sync error: ' + (err?.message || 'Network error'),
-      });
-    } finally {
-      setIsSyncingLogo(false);
-    }
-  };
-
-  const handleResetLogo = async () => {
-    setIsUploadingLogo(true);
-    setLogoMessage(null);
-    try {
-      const uploader = currentUser?.name || currentUser?.username || 'Super Admin';
-      await sheetsService.resetLogoInSheets(uploader);
-      const defaultUrl = `/logo.png?v=${Date.now()}`;
-      setLogoPreviewUrl(defaultUrl);
-      setLogoMeta({});
-      setLogoMessage({
-        type: 'success',
-        text: 'Reset logo to default in Google Sheets and local storage.',
-      });
-    } finally {
-      setIsUploadingLogo(false);
-    }
-  };
 
   // Apps Script Settings Form State
   const [webAppUrlInput, setWebAppUrlInput] = useState(sheetsConfig.webAppUrl);
@@ -817,20 +639,6 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
           >
             <Code className="w-4 h-4" />
             <span>Cloud Database & Sync Setup</span>
-          </button>
-        )}
-
-        {canManageBranding && (
-          <button
-            onClick={() => setAdminTab('logo')}
-            className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
-              adminTab === 'logo'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <ImageIcon className="w-4 h-4" />
-            <span>Brand Logo (logo.png)</span>
           </button>
         )}
 
@@ -1764,303 +1572,6 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
             {/* Syntax preview box */}
             <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-900 text-slate-200 text-xs font-mono p-4 max-h-80 overflow-y-auto">
               <pre>{GOOGLE_APPS_SCRIPT_CODE}</pre>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================= */}
-      {/* TAB 5: BRAND LOGO (logo.png) & FILE STRUCTURE */}
-      {/* ============================================================= */}
-      {adminTab === 'logo' && canViewBranding && (
-        <div className="space-y-8">
-          {!canManageBranding && (
-            <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl flex items-center gap-2.5 text-xs font-medium">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>
-                <strong>Read-Only Mode:</strong> Your staff account has view permission for portal branding. Uploading or modifying logo assets is restricted to authorized managers.
-              </span>
-            </div>
-          )}
-
-          {/* Header Banner */}
-          <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
-            <div className="relative z-10 max-w-2xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-semibold mb-3 border border-blue-400/20">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Brand Identity • Bengaluru</span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight">
-                Brand Logo Configuration (<code className="text-blue-300 font-mono text-lg">public/logo.png</code>)
-              </h2>
-              <p className="text-slate-300 text-xs sm:text-sm mt-2 leading-relaxed">
-                Your portal logo is served directly from <strong className="text-white font-mono">public/logo.png</strong> in the project file structure. 
-                It powers the application Header, Footer, Mobile Navigation, and browser tab Favicon.
-              </p>
-            </div>
-          </div>
-
-          {/* Feedback banner */}
-          {logoMessage && (
-            <div
-              className={`p-4 rounded-xl flex items-center justify-between gap-3 text-sm font-medium ${
-                logoMessage.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-rose-50 text-rose-800 border border-rose-200'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                {logoMessage.type === 'success' ? (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                ) : (
-                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-                )}
-                <span>{logoMessage.text}</span>
-              </div>
-              <button
-                onClick={() => setLogoMessage(null)}
-                className="text-xs opacity-70 hover:opacity-100"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Left Col: File Structure & Upload Form */}
-            <div className="lg:col-span-7 space-y-6">
-              {/* Card 1: File Structure Information */}
-              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
-                <div className="flex items-center gap-2 text-slate-900 font-bold text-base">
-                  <FolderTree className="w-5 h-5 text-blue-600" />
-                  <h3>File Structure Location</h3>
-                </div>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  In Vite and modern web standards, any asset located in the <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 font-mono">public/</code> directory is served statically from the web root:
-                </p>
-
-                {/* Visual File Tree Diagram */}
-                <div className="bg-slate-950 rounded-xl p-4 font-mono text-xs text-slate-300 border border-slate-800 space-y-1">
-                  <div className="text-slate-400">📁 tours-visa-portal/</div>
-                  <div className="pl-4 text-blue-400 font-bold flex items-center gap-1.5">
-                    <span>├── 📁 public/</span>
-                  </div>
-                  <div className="pl-8 text-emerald-400 font-bold flex items-center gap-2 bg-emerald-950/40 py-1 px-2 rounded border border-emerald-800/40">
-                    <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>├── 🖼️ logo.png</span>
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-sans font-semibold ml-auto">Active Logo</span>
-                  </div>
-                  <div className="pl-4 text-slate-500">├── 📁 src/</div>
-                  <div className="pl-4 text-slate-500">├── 📄 index.html</div>
-                  <div className="pl-4 text-slate-500">└── 📄 metadata.json</div>
-                </div>
-
-                {/* Specs Table */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs">
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">File Path</span>
-                    <span className="font-mono font-semibold text-slate-800">public/logo.png</span>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Public URL</span>
-                    <span className="font-mono font-semibold text-blue-600">/logo.png</span>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Resolution</span>
-                    <span className="font-mono font-semibold text-slate-800">512 × 512 px</span>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Formats</span>
-                    <span className="font-mono font-semibold text-slate-800">PNG, SVG, JPG</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 2: Interactive Upload & Google Sheets Sync */}
-              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-slate-900 font-bold text-base">
-                    <UploadCloud className="w-5 h-5 text-indigo-600" />
-                    <h3>Google Sheets Logo Storage</h3>
-                  </div>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <Database className="w-3.5 h-3.5" />
-                    <span>Sheet Tab: <code className="font-mono font-bold">Branding_Settings</code></span>
-                  </div>
-                </div>
-
-                {/* Google Sheets Sync Metadata */}
-                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="space-y-0.5">
-                    <span className="text-slate-500 block text-[11px]">Storage Mode:</span>
-                    <span className="font-semibold text-slate-800 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Direct Google Sheets Persistence + Local Cache
-                    </span>
-                  </div>
-                  {logoMeta?.updatedBy && (
-                    <div className="text-right space-y-0.5">
-                      <span className="text-slate-400 block text-[10px]">Last Updated By:</span>
-                      <span className="font-medium text-slate-700">
-                        {logoMeta.updatedBy} {logoMeta.updatedAt ? `(${new Date(logoMeta.updatedAt).toLocaleDateString()})` : ''}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Dropzone */}
-                <label
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                      handleLogoFileUpload(e.dataTransfer.files[0]);
-                    }
-                  }}
-                  className="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-50/50 hover:bg-indigo-50/20 group text-center"
-                >
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleLogoFileUpload(e.target.files[0]);
-                      }
-                    }}
-                  />
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-sm">
-                    {isUploadingLogo ? (
-                      <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
-                    ) : (
-                      <UploadCloud className="w-7 h-7 text-indigo-600" />
-                    )}
-                  </div>
-                  <span className="text-sm font-bold text-slate-800 block">
-                    {isUploadingLogo ? 'Saving logo directly to Google Sheets...' : 'Click to browse or drag and drop your logo here'}
-                  </span>
-                  <span className="text-xs text-slate-500 mt-1 max-w-md">
-                    Accepts PNG, JPG, or SVG. Uploaded logo is stored in Google Sheets (<code className="font-mono text-indigo-600 font-bold">Branding_Settings</code>) and updates the Header, Footer & Login Gate for all visitors.
-                  </span>
-                </label>
-
-                {/* Action Buttons */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSyncLogoFromSheets}
-                      disabled={isSyncingLogo}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingLogo ? 'animate-spin' : ''}`} />
-                      <span>Sync from Sheets</span>
-                    </button>
-                    <a
-                      href={logoPreviewUrl}
-                      download="logo.png"
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Download logo.png</span>
-                    </a>
-                    <button
-                      type="button"
-                      onClick={handleResetLogo}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Reset to Default</span>
-                    </button>
-                  </div>
-                  <span className="text-[11px] text-slate-400 font-medium">Synced across all devices</span>
-                </div>
-              </div>
-
-              {/* Card 3: Instructions for adding directly in file structure */}
-              <div className="bg-blue-50/60 rounded-2xl p-6 border border-blue-100 text-slate-700 text-xs space-y-2.5">
-                <h4 className="font-bold text-blue-900 text-sm flex items-center gap-2">
-                  <FileCode className="w-4 h-4 text-blue-600" />
-                  <span>How to add logo.png directly via File Tree:</span>
-                </h4>
-                <ol className="list-decimal list-inside space-y-1 text-slate-600 leading-relaxed">
-                  <li>In Google AI Studio's left sidebar, open the <strong>File Explorer</strong>.</li>
-                  <li>Click on the <strong className="font-mono text-blue-800">public</strong> directory.</li>
-                  <li>Upload your image file or rename your file to <strong className="font-mono text-blue-800">logo.png</strong>.</li>
-                  <li>The application will automatically pick up <strong className="font-mono text-blue-800">public/logo.png</strong> with zero configuration needed.</li>
-                </ol>
-              </div>
-            </div>
-
-            {/* Right Col: Live Previews */}
-            <div className="lg:col-span-5 space-y-6">
-              {/* Preview 1: Light Header Preview */}
-              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                  1. Live Header Preview (Light Theme)
-                </span>
-                <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-11 px-2 py-1 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center justify-center shrink-0">
-                      <img
-                        src={logoPreviewUrl}
-                        alt="Preview"
-                        className="h-8 w-auto max-w-[180px] object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200">
-                    Live Header
-                  </span>
-                </div>
-              </div>
-
-              {/* Preview 2: Dark Footer Preview */}
-              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                  2. Live Footer Preview (Dark Theme)
-                </span>
-                <div className="p-4 bg-slate-950 rounded-xl border border-slate-900 shadow-md flex items-center justify-between text-white">
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-11 px-2.5 py-1 rounded-xl bg-white border border-slate-700 shadow-sm flex items-center justify-center shrink-0">
-                      <img
-                        src={logoPreviewUrl}
-                        alt="Preview"
-                        className="h-7 w-auto max-w-[180px] object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-semibold bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md">
-                    Dark Canvas
-                  </span>
-                </div>
-              </div>
-
-              {/* Preview 3: Browser Tab Favicon Mockup */}
-              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                  3. Browser Tab Favicon Mockup
-                </span>
-                <div className="bg-slate-200/70 p-2.5 rounded-xl border border-slate-300/80">
-                  <div className="bg-white rounded-t-lg px-3 py-1.5 max-w-xs shadow-xs flex items-center gap-2 border-b-2 border-blue-600">
-                    <img
-                      src="/favicon.png"
-                      alt="Favicon"
-                      className="w-4 h-4 rounded-xs object-contain shrink-0"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        e.currentTarget.src = logoPreviewUrl;
-                      }}
-                    />
-                    <span className="text-xs font-medium text-slate-800 truncate">
-                      TripMyTour
-                    </span>
-                    <X className="w-3 h-3 text-slate-400 ml-auto shrink-0" />
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>

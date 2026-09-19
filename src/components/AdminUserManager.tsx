@@ -1042,28 +1042,6 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
                     </div>
                   </div>
 
-                  {/* Brand Logo */}
-                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <ImageIcon className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <div>
-                        <div className="font-bold text-xs text-slate-900">Brand Logo & Identity</div>
-                        <div className="text-[11px] text-slate-500">Upload new company logo across site and emails</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs font-semibold">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formPermissions.branding.manage}
-                          onChange={() => handlePermissionToggle('branding', 'manage')}
-                          className="w-4 h-4 rounded text-blue-600"
-                        />
-                        <span>Upload & Manage</span>
-                      </label>
-                    </div>
-                  </div>
-
                   {/* User & Permissions Management */}
                   <div className="p-3.5 bg-purple-50/70 rounded-2xl border border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
