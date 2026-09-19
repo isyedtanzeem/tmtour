@@ -98,6 +98,8 @@ export interface GoogleSheetsConfig {
   lastSyncedAt: string | null;
   syncStatus: 'connected' | 'syncing' | 'error' | 'local_fallback';
   errorMessage: string | null;
+  source?: 'file_system' | 'env_var' | 'custom';
+  isFileSystemFixed?: boolean;
 }
 
 export interface LeadEmailRecipient {

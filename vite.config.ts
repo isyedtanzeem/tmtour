@@ -112,9 +112,117 @@ function leadEmailPlugin(): Plugin {
   };
 }
 
+function sheetsConfigPlugin(): Plugin {
+  const configPath = path.resolve(process.cwd(), 'src/config/sheetsConfig.ts');
+
+  return {
+    name: 'sheets-config-api',
+    configureServer(server) {
+      server.middlewares.use('/api/sheets-config', (req, res) => {
+        if (req.method === 'GET') {
+          try {
+            if (fs.existsSync(configPath)) {
+              const fileContent = fs.readFileSync(configPath, 'utf-8');
+              const urlMatch = fileContent.match(/webAppUrl:\s*['"`]([^'"`]*)['"`]/);
+              const sheetIdMatch = fileContent.match(/sheetId:\s*['"`]([^'"`]*)['"`]/);
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  webAppUrl: urlMatch ? urlMatch[1] : '',
+                  sheetId: sheetIdMatch ? sheetIdMatch[1] : '',
+                  hasFile: true,
+                })
+              );
+              return;
+            }
+          } catch (e: any) {
+            console.error('Error reading sheetsConfig.ts:', e);
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, webAppUrl: '', sheetId: '', hasFile: false }));
+        } else if (req.method === 'POST') {
+          const chunks: Buffer[] = [];
+          req.on('data', (chunk) => chunks.push(chunk));
+          req.on('end', () => {
+            try {
+              const body = JSON.parse(Buffer.concat(chunks).toString());
+              const webAppUrl = (body.webAppUrl || '').trim();
+              const sheetId = (body.sheetId || '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms').trim();
+
+              const newContent = `/**
+ * ============================================================================
+ * FILE-SYSTEM AUTHORITATIVE GOOGLE SHEETS & APPS SCRIPT CONFIGURATION
+ * ============================================================================
+ * 
+ * This file is stored directly in the repository/file system.
+ * By defining your Google Apps Script Web App URL here, all users, devices,
+ * incognito sessions, and custom domain visitors on Vercel will automatically
+ * communicate directly with your Google Sheets database without relying on
+ * browser localStorage.
+ */
+
+export interface FileSystemSheetsConfig {
+  webAppUrl: string;
+  sheetId: string;
+  tabNames: {
+    holidayPackages: string;
+    visaServices: string;
+    bookings: string;
+    applications: string;
+    logs: string;
+  };
+}
+
+export const FILE_SYSTEM_SHEETS_CONFIG: FileSystemSheetsConfig = {
+  // Live Google Apps Script Web App URL:
+  webAppUrl: ${JSON.stringify(webAppUrl)},
+
+  // Google Spreadsheet Document ID:
+  sheetId: ${JSON.stringify(sheetId)},
+
+  tabNames: {
+    holidayPackages: 'Holiday_Packages',
+    visaServices: 'Visa_Services',
+    bookings: 'Bookings_Leads',
+    applications: 'Visa_Applications',
+    logs: 'Activity_Logs',
+  },
+};
+`;
+              // Ensure directory exists
+              const dir = path.dirname(configPath);
+              if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+              }
+
+              fs.writeFileSync(configPath, newContent, 'utf-8');
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  message: 'Successfully saved Web App URL directly to src/config/sheetsConfig.ts on the file system!',
+                  webAppUrl,
+                  sheetId,
+                })
+              );
+            } catch (err: any) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, error: err?.message || 'Server error' }));
+            }
+          });
+        } else {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), logoUploadPlugin(), leadEmailPlugin()],
+    plugins: [react(), tailwindcss(), logoUploadPlugin(), leadEmailPlugin(), sheetsConfigPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

@@ -1,6 +1,7 @@
 import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig } from '../types';
 import { DEFAULT_HOLIDAY_PACKAGES, DEFAULT_VISA_SERVICES } from '../data/initialData';
 import { leadEmailService } from './leadEmailService';
+import { FILE_SYSTEM_SHEETS_CONFIG } from '../config/sheetsConfig';
 
 const STORAGE_KEYS = {
   CONFIG: 'tripmytour_sheets_config_v2',
@@ -97,9 +98,49 @@ export class SheetsService {
     return match ? match[1] : null;
   }
 
+  public getFileSystemConfig() {
+    return {
+      webAppUrl: (FILE_SYSTEM_SHEETS_CONFIG?.webAppUrl || '').trim(),
+      sheetId: (FILE_SYSTEM_SHEETS_CONFIG?.sheetId || '').trim(),
+      isConfigured: this.isValidWebAppUrl(FILE_SYSTEM_SHEETS_CONFIG?.webAppUrl),
+    };
+  }
+
   private loadInitialConfig(): void {
+    const fsConfig = FILE_SYSTEM_SHEETS_CONFIG;
+    const fsUrl = (fsConfig?.webAppUrl || '').trim();
     const envUrl = getEnvWebAppUrl();
 
+    // Priority 1: Direct File System configuration (src/config/sheetsConfig.ts)
+    if (fsUrl && this.isValidWebAppUrl(fsUrl)) {
+      this.config = {
+        ...this.config,
+        webAppUrl: fsUrl,
+        sheetId: fsConfig.sheetId || this.config.sheetId,
+        isCustomUrlActive: true,
+        syncStatus: 'syncing',
+        errorMessage: null,
+        source: 'file_system',
+        isFileSystemFixed: true,
+      };
+      return;
+    }
+
+    // Priority 2: Vercel / Cloud Run Environment variable
+    if (envUrl && this.isValidWebAppUrl(envUrl)) {
+      this.config = {
+        ...this.config,
+        webAppUrl: envUrl,
+        isCustomUrlActive: true,
+        syncStatus: 'syncing',
+        errorMessage: null,
+        source: 'env_var',
+        isFileSystemFixed: false,
+      };
+      return;
+    }
+
+    // Priority 3: Browser localStorage fallback
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.CONFIG);
       if (saved) {
@@ -113,29 +154,22 @@ export class SheetsService {
           parsed.isCustomUrlActive = false;
         }
 
-        const effectiveUrl = (parsed.webAppUrl || envUrl || '').trim();
+        const effectiveUrl = (parsed.webAppUrl || '').trim();
         const hasValidUrl = this.isValidWebAppUrl(effectiveUrl);
 
         this.config = {
           ...this.config,
           ...parsed,
           webAppUrl: effectiveUrl,
-          isCustomUrlActive: hasValidUrl && (parsed.isCustomUrlActive !== false || !!envUrl),
+          isCustomUrlActive: hasValidUrl && parsed.isCustomUrlActive !== false,
           syncStatus: hasValidUrl ? 'syncing' : 'local_fallback',
           errorMessage: null,
+          source: hasValidUrl ? 'custom' : undefined,
+          isFileSystemFixed: false,
         };
-      } else if (envUrl && this.isValidWebAppUrl(envUrl)) {
-        // Environment variable detected from Vercel / hosting
-        this.config.webAppUrl = envUrl;
-        this.config.isCustomUrlActive = true;
-        this.config.syncStatus = 'syncing';
       }
     } catch (e) {
       console.warn('Could not read config from localStorage', e);
-      if (envUrl && this.isValidWebAppUrl(envUrl)) {
-        this.config.webAppUrl = envUrl;
-        this.config.isCustomUrlActive = true;
-      }
     }
   }
 
@@ -185,12 +219,108 @@ export class SheetsService {
   }
 
   public clearCustomUrl(): void {
-    this.config.webAppUrl = '';
-    this.config.isCustomUrlActive = false;
-    this.config.syncStatus = 'local_fallback';
-    this.config.errorMessage = null;
+    const fsConfig = FILE_SYSTEM_SHEETS_CONFIG;
+    const fsUrl = (fsConfig?.webAppUrl || '').trim();
+
+    if (fsUrl && this.isValidWebAppUrl(fsUrl)) {
+      // Revert back to the file system configuration
+      this.config.webAppUrl = fsUrl;
+      this.config.sheetId = fsConfig.sheetId || this.config.sheetId;
+      this.config.isCustomUrlActive = true;
+      this.config.syncStatus = 'syncing';
+      this.config.errorMessage = null;
+      this.config.source = 'file_system';
+      this.config.isFileSystemFixed = true;
+    } else {
+      this.config.webAppUrl = '';
+      this.config.isCustomUrlActive = false;
+      this.config.syncStatus = 'local_fallback';
+      this.config.errorMessage = null;
+      this.config.source = undefined;
+      this.config.isFileSystemFixed = false;
+    }
+
     this.saveConfig();
     this.notify();
+    if (this.config.isCustomUrlActive) {
+      this.syncWithGoogleSheets();
+    }
+  }
+
+  public async saveToFileSystem(
+    targetUrl: string,
+    targetSheetId?: string
+  ): Promise<{ success: boolean; message: string }> {
+    const cleanUrl = (targetUrl || '').trim();
+    const cleanSheetId = (targetSheetId || this.config.sheetId || '').trim();
+
+    if (!cleanUrl) {
+      return { success: false, message: 'Please enter a valid Google Apps Script Web App URL.' };
+    }
+
+    if (!this.isValidWebAppUrl(cleanUrl)) {
+      return {
+        success: false,
+        message: 'Invalid Web App URL format. Must start with https://script.google.com/macros/s/... and end with /exec.',
+      };
+    }
+
+    try {
+      // Write directly to file system via backend endpoint
+      const res = await fetch('/api/sheets-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webAppUrl: cleanUrl, sheetId: cleanSheetId }),
+      });
+
+      if (res.ok) {
+        FILE_SYSTEM_SHEETS_CONFIG.webAppUrl = cleanUrl;
+        if (cleanSheetId) FILE_SYSTEM_SHEETS_CONFIG.sheetId = cleanSheetId;
+
+        this.config = {
+          ...this.config,
+          webAppUrl: cleanUrl,
+          sheetId: cleanSheetId || this.config.sheetId,
+          isCustomUrlActive: true,
+          syncStatus: 'syncing',
+          errorMessage: null,
+          source: 'file_system',
+          isFileSystemFixed: true,
+        };
+        this.saveConfig();
+        this.notify();
+        await this.syncWithGoogleSheets();
+
+        return {
+          success: true,
+          message: 'Saved permanently to src/config/sheetsConfig.ts on the file system! All visitors & admins on your custom domain will now use this URL.',
+        };
+      }
+    } catch (err) {
+      console.warn('Direct file write endpoint unavailable, updating memory mirror:', err);
+    }
+
+    // Fallback: update in-memory mirror and storage
+    FILE_SYSTEM_SHEETS_CONFIG.webAppUrl = cleanUrl;
+    if (cleanSheetId) FILE_SYSTEM_SHEETS_CONFIG.sheetId = cleanSheetId;
+    this.config = {
+      ...this.config,
+      webAppUrl: cleanUrl,
+      sheetId: cleanSheetId || this.config.sheetId,
+      isCustomUrlActive: true,
+      syncStatus: 'syncing',
+      errorMessage: null,
+      source: 'file_system',
+      isFileSystemFixed: true,
+    };
+    this.saveConfig();
+    this.notify();
+    await this.syncWithGoogleSheets();
+
+    return {
+      success: true,
+      message: 'Active URL configured! Also update src/config/sheetsConfig.ts in your code repository for permanent Vercel deployment.',
+    };
   }
 
   public async updateConfig(newConfig: Partial<GoogleSheetsConfig>): Promise<{ success: boolean; message?: string }> {
@@ -205,6 +335,10 @@ export class SheetsService {
     }
 
     const hasValidUrl = this.isValidWebAppUrl(targetUrl);
+    const fsUrl = (FILE_SYSTEM_SHEETS_CONFIG?.webAppUrl || '').trim();
+    const envUrl = getEnvWebAppUrl();
+    const isFs = targetUrl === fsUrl && this.isValidWebAppUrl(fsUrl);
+    const isEnv = targetUrl === envUrl;
 
     this.config = {
       ...this.config,
@@ -214,6 +348,8 @@ export class SheetsService {
       isCustomUrlActive: hasValidUrl,
       syncStatus: hasValidUrl ? 'syncing' : 'local_fallback',
       errorMessage: null,
+      source: isFs ? 'file_system' : isEnv ? 'env_var' : hasValidUrl ? 'custom' : undefined,
+      isFileSystemFixed: isFs,
     };
     this.saveConfig();
     this.notify();

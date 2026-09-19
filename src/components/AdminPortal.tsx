@@ -35,7 +35,8 @@ import {
   Shield,
   Eye,
   ArrowLeft,
-  Globe
+  Globe,
+  HardDrive
 } from 'lucide-react';
 import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig, ItineraryDay, AdminUser } from '../types';
 import { sheetsService } from '../services/sheetsService';
@@ -239,6 +240,83 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [isSavingVisa, setIsSavingVisa] = useState(false);
   const [visaSaveError, setVisaSaveError] = useState<string | null>(null);
   const [isDeletingVisa, setIsDeletingVisa] = useState(false);
+  const [isSavingToFileSystem, setIsSavingToFileSystem] = useState(false);
+  const [copiedFsSnippet, setCopiedFsSnippet] = useState(false);
+
+  // Save directly to file system (src/config/sheetsConfig.ts)
+  const handleSaveToFileSystem = async () => {
+    let cleanUrl = webAppUrlInput.trim();
+    let cleanSheetId = sheetIdInput.trim();
+
+    if (!cleanUrl) {
+      setTestResult({
+        success: false,
+        message: 'Please paste your Google Apps Script Web App URL first before saving to file system.',
+      });
+      return;
+    }
+
+    if (sheetsService.isGoogleSpreadsheetUrl(cleanUrl)) {
+      setTestResult({
+        success: false,
+        message: 'Google Spreadsheet document link detected. You must deploy the Apps Script as a Web App and paste the /exec URL.',
+      });
+      return;
+    }
+
+    setIsSavingToFileSystem(true);
+    setTestResult(null);
+
+    const res = await sheetsService.saveToFileSystem(cleanUrl, cleanSheetId);
+    setIsSavingToFileSystem(false);
+
+    if (res.success) {
+      showBanner('success', 'URL successfully fixed and saved to file system (src/config/sheetsConfig.ts)!');
+      setTestResult({
+        success: true,
+        message: 'Fixed in File System! All users, sessions, and Vercel visitors will now use this permanent URL.',
+      });
+      onRefresh();
+    } else {
+      setTestResult({
+        success: false,
+        message: res.message,
+      });
+      showBanner('error', res.message);
+    }
+  };
+
+  const handleCopyFsSnippet = () => {
+    const url = (webAppUrlInput || sheetsConfig.webAppUrl || '').trim();
+    const sheetId = (sheetIdInput || sheetsConfig.sheetId || '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms').trim();
+
+    const snippet = `/**
+ * ============================================================================
+ * FILE-SYSTEM AUTHORITATIVE GOOGLE SHEETS & APPS SCRIPT CONFIGURATION
+ * ============================================================================
+ */
+export const FILE_SYSTEM_SHEETS_CONFIG = {
+  // Live Google Apps Script Web App URL:
+  webAppUrl: '${url}',
+
+  // Google Spreadsheet Document ID:
+  sheetId: '${sheetId}',
+
+  tabNames: {
+    holidayPackages: 'Holiday_Packages',
+    visaServices: 'Visa_Services',
+    bookings: 'Bookings_Leads',
+    applications: 'Visa_Applications',
+    logs: 'Activity_Logs',
+  },
+};
+`;
+
+    navigator.clipboard.writeText(snippet);
+    setCopiedFsSnippet(true);
+    setTimeout(() => setCopiedFsSnippet(false), 2500);
+    showBanner('success', 'Copied TypeScript configuration code for src/config/sheetsConfig.ts!');
+  };
 
   // Save Apps Script Config
   const handleSaveConfig = async (e: React.FormEvent) => {
@@ -1179,6 +1257,60 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
           )}
 
+          {/* Active Database Endpoint Source Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 rounded-xl bg-slate-900 text-white shrink-0 mt-0.5 shadow-xs">
+                  <HardDrive className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-slate-900">
+                      Authoritative Database Endpoint
+                    </h3>
+                    {sheetsConfig.source === 'file_system' || sheetsConfig.isFileSystemFixed ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        Fixed in File System (`src/config/sheetsConfig.ts`)
+                      </span>
+                    ) : sheetsConfig.source === 'env_var' ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-bold border border-blue-300 flex items-center gap-1">
+                        <Globe className="w-3.5 h-3.5 text-blue-600" />
+                        Active from Vercel Env Variable
+                      </span>
+                    ) : sheetsConfig.isCustomUrlActive ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold border border-amber-300">
+                        Browser Storage Active
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200">
+                        Local Seed Database Active
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    {sheetsConfig.source === 'file_system' || sheetsConfig.isFileSystemFixed
+                      ? 'This URL is permanently stored in the repository file system (`src/config/sheetsConfig.ts`). It is automatically bundled on Vercel for all visitors, devices, and sessions.'
+                      : 'To prevent relying on browser local storage, you can fix and store this URL directly in `src/config/sheetsConfig.ts` on the file system.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCopyFsSnippet}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Copy configuration snippet for src/config/sheetsConfig.ts"
+                >
+                  <FileCode className="w-3.5 h-3.5 text-slate-600" />
+                  <span>{copiedFsSnippet ? 'Copied File Snippet!' : 'Copy File System Config'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Form to paste Web App URL */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs">
             <h2 className="text-xl font-bold text-slate-900 mb-2">
@@ -1277,10 +1409,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
               {canManageSheets && (
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleSaveToFileSystem}
+                      disabled={isSavingToFileSystem || !canManageSheets}
+                      className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold text-xs sm:text-sm shadow-sm flex items-center gap-2 transition-all cursor-pointer"
+                      title="Writes this Web App URL directly to src/config/sheetsConfig.ts on the file system so it persists across all devices and Vercel deployments"
+                    >
+                      <HardDrive className="w-4 h-4" />
+                      <span>{isSavingToFileSystem ? 'Writing to File System...' : 'Save to File System (Permanent)'}</span>
+                    </button>
+
                     <button
                       type="submit"
-                      className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
+                      className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
+                      title="Saves configuration for active session"
                     >
                       Save Configuration
                     </button>
@@ -1311,6 +1455,69 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
             </form>
+          </div>
+
+          {/* File System Permanent Database Configuration Box */}
+          <div className="bg-emerald-50/60 rounded-2xl border border-emerald-200 p-6 sm:p-8">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 rounded-xl bg-emerald-600 text-white shrink-0 shadow-sm mt-0.5">
+                  <HardDrive className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-slate-900">
+                      File System Authoritative Configuration (`src/config/sheetsConfig.ts`)
+                    </h3>
+                    {sheetsConfig.source === 'file_system' || sheetsConfig.isFileSystemFixed ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        Live in Codebase
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-medium border border-slate-300">
+                        Ready to Save
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed max-w-2xl">
+                    By storing your Google Apps Script Web App URL in <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-200 font-mono text-emerald-800 font-bold">src/config/sheetsConfig.ts</code>, you eliminate reliance on browser localStorage. Every admin, staff member, and custom domain visitor connects automatically without configuring anything in their browser!
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCopyFsSnippet}
+                disabled={!webAppUrlInput && !sheetsConfig.webAppUrl}
+                className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer disabled:cursor-not-allowed"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>{copiedFsSnippet ? 'Copied File Snippet!' : 'Copy File Configuration'}</span>
+              </button>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-emerald-200/70 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="bg-white/85 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-100 space-y-1">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] flex items-center justify-center font-bold">A</span>
+                  One-Click Save via Admin Portal
+                </div>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Click <strong>"Save to File System (Permanent)"</strong> above. The app will immediately write your Web App URL into <code className="text-emerald-700 font-mono">src/config/sheetsConfig.ts</code>.
+                </p>
+              </div>
+
+              <div className="bg-white/85 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-100 space-y-1">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] flex items-center justify-center font-bold">B</span>
+                  Permanent Across Vercel & Devices
+                </div>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Because the URL is part of the project source code, when you deploy to Vercel or export your project, Google Sheets acts as your real-time database across all browsers and devices.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Vercel & Custom Domain Live Database Configuration */}
