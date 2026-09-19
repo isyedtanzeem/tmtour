@@ -102,6 +102,16 @@ export interface GoogleSheetsConfig {
   isFileSystemFixed?: boolean;
 }
 
+export interface BrandingRecord {
+  id: string;
+  key: string;
+  value: string;
+  value_chunk2?: string;
+  updatedAt: string;
+  updatedBy: string;
+  description?: string;
+}
+
 export interface LeadEmailRecipient {
   id: string;
   email: string;

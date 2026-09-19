@@ -48,7 +48,7 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier.trim() || !password.trim()) {
       setErrorMessage('Please enter both username/email and password.');
@@ -58,9 +58,8 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    // Minor visual delay for secure auth UX
-    setTimeout(() => {
-      const res = adminAuthService.login(identifier, password, rememberMe);
+    try {
+      const res = await adminAuthService.loginAsync(identifier, password, rememberMe);
       setIsSubmitting(false);
 
       if (res.success && res.user) {
@@ -71,10 +70,23 @@ export const AdminLoginGate: React.FC<AdminLoginGateProps> = ({
           setLockoutTimer(res.lockoutSeconds);
         }
       }
-    }, 450);
+    } catch {
+      setIsSubmitting(false);
+      setErrorMessage('An unexpected error occurred during authentication. Please retry.');
+    }
   };
 
-  const logoUrl = localStorage.getItem('custom_logo_data') || '/logo.png';
+  const [logoUrl, setLogoUrl] = useState<string>(() => {
+    return localStorage.getItem('custom_logo_data') || '/logo.png';
+  });
+
+  useEffect(() => {
+    const handleLogoUpdate = () => {
+      setLogoUrl(localStorage.getItem('custom_logo_data') || `/logo.png?v=${Date.now()}`);
+    };
+    window.addEventListener('logo-updated', handleLogoUpdate);
+    return () => window.removeEventListener('logo-updated', handleLogoUpdate);
+  }, []);
 
   return (
     <div className="min-h-[85vh] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-100/60">

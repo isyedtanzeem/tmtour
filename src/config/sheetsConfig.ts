@@ -32,6 +32,8 @@ export interface FileSystemSheetsConfig {
     bookings: string;
     applications: string;
     logs: string;
+    staffUsers: string;
+    branding?: string;
   };
 }
 
@@ -48,5 +50,7 @@ export const FILE_SYSTEM_SHEETS_CONFIG: FileSystemSheetsConfig = {
     bookings: 'Bookings_Leads',
     applications: 'Visa_Applications',
     logs: 'Activity_Logs',
+    staffUsers: 'Staff_Users',
+    branding: 'Branding_Settings',
   },
 };

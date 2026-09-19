@@ -25,9 +25,11 @@ import {
   FileCheck,
   Code,
   ImageIcon,
-  RefreshCw
+  RefreshCw,
+  Database
 } from 'lucide-react';
 import { adminAuthService, DEFAULT_PERMISSIONS, VIEW_ONLY_LEADS_PERMISSIONS } from '../services/adminAuthService';
+import { sheetsService } from '../services/sheetsService';
 import { AdminUser, AdminRole, ModulePermissions } from '../types';
 
 interface AdminUserManagerProps {
@@ -61,6 +63,8 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
 
   // Feedback notification
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
 
   const refreshUserList = () => {
     setUsers(adminAuthService.getAllUsers());
@@ -70,6 +74,23 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
   const showNotification = (type: 'success' | 'error', text: string) => {
     setFeedback({ type, text });
     setTimeout(() => setFeedback(null), 4000);
+  };
+
+  const handleSyncFromSheets = async () => {
+    setIsSyncingSheets(true);
+    try {
+      const res = await sheetsService.syncWithGoogleSheets();
+      refreshUserList();
+      if (res.success) {
+        showNotification('success', 'Staff accounts refreshed from Google Sheets database!');
+      } else {
+        showNotification('error', res.message || 'Failed to sync staff from Google Sheets.');
+      }
+    } catch (e: any) {
+      showNotification('error', e?.message || 'Error communicating with Google Sheets.');
+    } finally {
+      setIsSyncingSheets(false);
+    }
   };
 
   const openCreateModal = () => {
@@ -168,7 +189,7 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
     });
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formName.trim() || !formUsername.trim() || !formEmail.trim()) {
@@ -181,67 +202,89 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
       return;
     }
 
-    if (editingUser) {
-      // Update existing user
-      const res = adminAuthService.updateUser(editingUser.id, {
-        name: formName,
-        username: formUsername,
-        email: formEmail,
-        role: formRole,
-        active: formActive,
-        permissions: formPermissions,
-        newPassword: formPassword.trim() ? formPassword.trim() : undefined,
-      });
+    setIsProcessing(true);
 
+    try {
+      if (editingUser) {
+        // Update existing user
+        const res = await adminAuthService.updateUserAsync(editingUser.id, {
+          name: formName,
+          username: formUsername,
+          email: formEmail,
+          role: formRole,
+          active: formActive,
+          permissions: formPermissions,
+          newPassword: formPassword.trim() ? formPassword.trim() : undefined,
+        });
+
+        if (res.success) {
+          showNotification('success', res.message);
+          setIsCreateModalOpen(false);
+          refreshUserList();
+        } else {
+          showNotification('error', res.message);
+        }
+      } else {
+        // Create new user
+        const res = await adminAuthService.createUserAsync({
+          name: formName,
+          username: formUsername,
+          email: formEmail,
+          password: formPassword,
+          role: formRole,
+          permissions: formPermissions,
+          active: formActive,
+        });
+
+        if (res.success) {
+          showNotification('success', res.message);
+          setIsCreateModalOpen(false);
+          refreshUserList();
+        } else {
+          showNotification('error', res.message);
+        }
+      }
+    } catch (err: any) {
+      showNotification('error', err?.message || 'Failed to save staff member.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleToggleActive = async (user: AdminUser) => {
+    setIsProcessing(true);
+    try {
+      const res = await adminAuthService.toggleUserActiveAsync(user.id);
       if (res.success) {
         showNotification('success', res.message);
-        setIsCreateModalOpen(false);
         refreshUserList();
       } else {
         showNotification('error', res.message);
       }
-    } else {
-      // Create new user
-      const res = adminAuthService.createUser({
-        name: formName,
-        username: formUsername,
-        email: formEmail,
-        password: formPassword,
-        role: formRole,
-        permissions: formPermissions,
-        active: formActive,
-      });
-
-      if (res.success) {
-        showNotification('success', res.message);
-        setIsCreateModalOpen(false);
-        refreshUserList();
-      } else {
-        showNotification('error', res.message);
-      }
+    } catch (err: any) {
+      showNotification('error', err?.message || 'Failed to update user status.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleToggleActive = (user: AdminUser) => {
-    const res = adminAuthService.toggleUserActive(user.id);
-    if (res.success) {
-      showNotification('success', res.message);
-      refreshUserList();
-    } else {
-      showNotification('error', res.message);
-    }
-  };
-
-  const handleDeleteUser = (user: AdminUser) => {
-    if (!window.confirm(`Are you sure you want to permanently delete the staff user "${user.name}"?`)) {
+  const handleDeleteUser = async (user: AdminUser) => {
+    if (!window.confirm(`Are you sure you want to permanently delete the staff user "${user.name}"? This will also remove them from Google Sheets.`)) {
       return;
     }
-    const res = adminAuthService.deleteUser(user.id);
-    if (res.success) {
-      showNotification('success', res.message);
-      refreshUserList();
-    } else {
-      showNotification('error', res.message);
+    setIsProcessing(true);
+    try {
+      const res = await adminAuthService.deleteUserAsync(user.id);
+      if (res.success) {
+        showNotification('success', res.message);
+        refreshUserList();
+      } else {
+        showNotification('error', res.message);
+      }
+    } catch (err: any) {
+      showNotification('error', err?.message || 'Failed to delete user.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -308,13 +351,43 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={openCreateModal}
-          className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer shrink-0"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Create New Staff User</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={handleSyncFromSheets}
+            disabled={isSyncingSheets || isProcessing}
+            title="Refresh staff records directly from Google Sheets Staff_Users sheet"
+            className="px-4 py-3 rounded-2xl bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 border border-slate-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-2xs hover:shadow-xs transition-all cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 text-emerald-600 ${isSyncingSheets ? 'animate-spin' : ''}`} />
+            <span>{isSyncingSheets ? 'Syncing...' : 'Sync from Sheets'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer shrink-0"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Create New Staff User</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Google Sheets Tab Sync Info Banner */}
+      <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5 text-slate-700">
+          <Database className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>
+            <strong>Google Sheets Staff Storage:</strong> Connected to sheet tab <code className="bg-white px-2 py-0.5 rounded-md border border-slate-200 font-mono text-emerald-700 font-semibold">Staff_Users</code>. New staff users and role permissions are automatically synchronized and validated via Google Apps Script.
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Sheets Database Synced</span>
+          </span>
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -1019,17 +1092,28 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
               <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
                 <button
                   type="button"
+                  disabled={isProcessing}
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs sm:text-sm transition-colors cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs sm:text-sm transition-colors cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2"
+                  disabled={isProcessing}
+                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>{editingUser ? 'Save Changes' : 'Create Staff User'}</span>
+                  {isProcessing ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Saving & Syncing to Sheets...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>{editingUser ? 'Save Changes' : 'Create Staff User'}</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

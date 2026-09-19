@@ -55,6 +55,12 @@ var SHEET_PACKAGES = "HolidayPackages";
 var SHEET_VISAS = "VisaServices";
 var SHEET_BOOKINGS = "Bookings";
 var SHEET_APPLICATIONS = "VisaApplications";
+var SHEET_STAFF = "Staff_Users";
+var SHEET_BRANDING = "Branding_Settings";
+
+function getBrandingSheet(ss) {
+  return ss.getSheetByName(SHEET_BRANDING) || ss.getSheetByName("Branding") || ss.getSheetByName("Portal_Settings");
+}
 
 // =========================================================================
 // 2. HTTP REQUEST HANDLERS (GET / POST)
@@ -141,6 +147,132 @@ function handleRequest(e) {
       response.visas = getSheetRecords(ss.getSheetByName(SHEET_VISAS));
       response.bookings = getSheetRecords(ss.getSheetByName(SHEET_BOOKINGS));
       response.applications = getSheetRecords(ss.getSheetByName(SHEET_APPLICATIONS));
+      response.staffUsers = getSheetRecords(ss.getSheetByName(SHEET_STAFF));
+      
+      var brandSheetForData = getBrandingSheet(ss);
+      if (brandSheetForData) {
+        var logoRecForData = getRecordById(brandSheetForData, "portal_logo");
+        if (logoRecForData) {
+          response.logo = (logoRecForData.value || "") + (logoRecForData.value_chunk2 || "");
+          response.logoUpdatedAt = logoRecForData.updatedAt || "";
+          response.logoUpdatedBy = logoRecForData.updatedBy || "";
+        }
+      }
+    }
+    
+    // ----------------- BRANDING & LOGO CRUD -----------------
+    else if (action === "getLogo" || action === "getBranding") {
+      var brandSheet = getBrandingSheet(ss);
+      if (brandSheet) {
+        var logoRec = getRecordById(brandSheet, "portal_logo");
+        if (logoRec) {
+          response.logo = (logoRec.value || "") + (logoRec.value_chunk2 || "");
+          response.updatedAt = logoRec.updatedAt || "";
+          response.updatedBy = logoRec.updatedBy || "";
+        } else {
+          response.logo = "";
+        }
+      } else {
+        response.logo = "";
+      }
+      response.message = "Retrieved logo from Google Sheets!";
+    }
+    else if (action === "saveLogo" || action === "saveBranding") {
+      var brandData = postData.data || postData || {};
+      var fullLogoStr = String(brandData.logo || brandData.value || params.logo || "").trim();
+      var updater = String(brandData.updatedBy || params.updatedBy || "Admin").trim();
+      
+      var part1 = fullLogoStr.substring(0, 40000);
+      var part2 = fullLogoStr.length > 40000 ? fullLogoStr.substring(40000, 80000) : "";
+      
+      var bSheet = getBrandingSheet(ss);
+      if (!bSheet) {
+        ensureTabsExist(ss);
+        bSheet = getBrandingSheet(ss);
+      }
+      
+      var brandRecord = {
+        id: "portal_logo",
+        key: "custom_logo",
+        value: part1,
+        value_chunk2: part2,
+        updatedAt: new Date().toISOString(),
+        updatedBy: updater,
+        description: "TripMyTour Brand Logo"
+      };
+      
+      upsertRecord(bSheet, brandRecord);
+      
+      response.logo = fullLogoStr;
+      response.logoUpdatedAt = brandRecord.updatedAt;
+      response.logoUpdatedBy = updater;
+      response.message = "Logo successfully saved and updated in Google Sheets 'Branding_Settings' tab!";
+    }
+    else if (action === "resetLogo") {
+      var resetBSheet = getBrandingSheet(ss);
+      if (resetBSheet) {
+        upsertRecord(resetBSheet, {
+          id: "portal_logo",
+          key: "custom_logo",
+          value: "",
+          value_chunk2: "",
+          updatedAt: new Date().toISOString(),
+          updatedBy: String(postData.updatedBy || params.updatedBy || "Admin"),
+          description: "TripMyTour Brand Logo (Reset to Default)"
+        });
+      }
+      response.logo = "";
+      response.message = "Logo reset to default in Google Sheets!";
+    }
+    
+    // ----------------- STAFF & ROLES CRUD + VALIDATION -----------------
+    else if (action === "getStaffUsers" || action === "getStaff") {
+      response.staffUsers = getSheetRecords(ss.getSheetByName(SHEET_STAFF));
+    }
+    else if (action === "saveStaffUser" || action === "saveStaff") {
+      response.item = upsertRecord(ss.getSheetByName(SHEET_STAFF), postData.data);
+      response.staffUsers = getSheetRecords(ss.getSheetByName(SHEET_STAFF));
+      response.message = "Staff member successfully saved to Google Sheets!";
+    }
+    else if (action === "deleteStaffUser" || action === "deleteStaff") {
+      var idToDeleteStaff = postData.id || params.id;
+      response.deleted = deleteRecordById(ss.getSheetByName(SHEET_STAFF), idToDeleteStaff);
+      response.staffUsers = getSheetRecords(ss.getSheetByName(SHEET_STAFF));
+      response.message = "Staff member removed from Google Sheets!";
+    }
+    else if (action === "validateStaff" || action === "loginUser") {
+      var loginData = postData.data || postData || {};
+      var ident = String(loginData.identifier || loginData.username || params.identifier || "").trim().toLowerCase();
+      var pass = String(loginData.password || params.password || "").trim();
+      
+      var staffList = getSheetRecords(ss.getSheetByName(SHEET_STAFF));
+      var matchedStaff = null;
+      for (var s = 0; s < staffList.length; s++) {
+        var userCandidate = staffList[s];
+        var uUname = String(userCandidate.username || "").trim().toLowerCase();
+        var uEmail = String(userCandidate.email || "").trim().toLowerCase();
+        if ((uUname === ident || uEmail === ident || (ident === "admin" && userCandidate.id === "user_super_admin") || (ident === "admin@tripmytour.com" && userCandidate.id === "user_super_admin")) && String(userCandidate.password || "").trim() === pass) {
+          matchedStaff = userCandidate;
+          break;
+        }
+      }
+      
+      if (!matchedStaff) {
+        response.success = false;
+        response.error = "Invalid username/email or password in Google Sheets staff records.";
+      } else if (matchedStaff.active === false || String(matchedStaff.active).toLowerCase() === "false") {
+        response.success = false;
+        response.error = "This staff account has been deactivated or suspended by Super Admin.";
+      } else {
+        response.success = true;
+        var loginTime = new Date().toISOString();
+        updateRecordField(ss.getSheetByName(SHEET_STAFF), matchedStaff.id, "lastLoginAt", loginTime);
+        matchedStaff.lastLoginAt = loginTime;
+        var safeStaff = JSON.parse(JSON.stringify(matchedStaff));
+        delete safeStaff.password;
+        response.user = safeStaff;
+        response.message = "Staff validated successfully via Google Apps Script!";
+      }
     }
     
     // ----------------- PACKAGES CRUD -----------------
@@ -697,6 +829,17 @@ function updateRecordField(sheet, id, fieldName, value) {
   return false;
 }
 
+function getRecordById(sheet, id) {
+  if (!sheet || !id) return null;
+  var records = getSheetRecords(sheet);
+  for (var i = 0; i < records.length; i++) {
+    if (String(records[i].id) === String(id) || String(records[i].key) === String(id)) {
+      return records[i];
+    }
+  }
+  return null;
+}
+
 function ensureTabsExist(ss) {
   var required = [
     { 
@@ -718,6 +861,16 @@ function ensureTabsExist(ss) {
       name: SHEET_APPLICATIONS, 
       headers: ["id", "referenceNumber", "visaId", "country", "visaType", "applicantName", "applicantEmail", "applicantPhone", "passportNumber", "nationality", "travelDate", "expressProcessing", "totalAmount", "uploadedDocuments", "status", "submittedAt", "notes"],
       color: "#ede9fe"
+    },
+    { 
+      name: SHEET_STAFF, 
+      headers: ["id", "username", "email", "password", "name", "role", "active", "permissions", "createdAt", "lastLoginAt"],
+      color: "#fce7f3"
+    },
+    {
+      name: SHEET_BRANDING,
+      headers: ["id", "key", "value", "value_chunk2", "updatedAt", "updatedBy", "description"],
+      color: "#fef08a"
     }
   ];
   
@@ -730,6 +883,45 @@ function ensureTabsExist(ss) {
       sheet.getRange(1, 1, 1, req.headers.length).setFontWeight("bold").setBackground(req.color);
       sheet.setFrozenRows(1);
     }
+  }
+
+  // Seed default super admin in Staff_Users if empty
+  var staffSheet = ss.getSheetByName(SHEET_STAFF);
+  if (staffSheet && staffSheet.getLastRow() <= 1) {
+    appendRecord(staffSheet, {
+      id: "user_super_admin",
+      username: "admin",
+      email: "admin@tripmytour.com",
+      password: "admin",
+      name: "Syed Tanzeem (Super Admin)",
+      role: "Super Admin",
+      active: true,
+      permissions: {
+        packages: { view: true, manage: true },
+        visas: { view: true, manage: true },
+        leads: { view: true, manageStatus: true, delete: true },
+        databaseSync: { view: true, manage: true },
+        emailAlerts: { view: true, manage: true },
+        branding: { manage: true },
+        userManagement: { manage: true }
+      },
+      createdAt: new Date().toISOString(),
+      lastLoginAt: ""
+    });
+  }
+
+  // Seed default logo record in Branding_Settings if empty
+  var brandingSheet = ss.getSheetByName(SHEET_BRANDING);
+  if (brandingSheet && brandingSheet.getLastRow() <= 1) {
+    appendRecord(brandingSheet, {
+      id: "portal_logo",
+      key: "custom_logo",
+      value: "",
+      value_chunk2: "",
+      updatedAt: new Date().toISOString(),
+      updatedBy: "System Default",
+      description: "TripMyTour Brand Logo"
+    });
   }
 }
 

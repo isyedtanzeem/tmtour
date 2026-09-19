@@ -50,6 +50,52 @@ import { formatCurrency } from '../utils/formatters';
 
 export type AdminTabType = 'packages' | 'visas' | 'bookings' | 'sheets' | 'logo' | 'emails' | 'security' | 'users';
 
+const optimizeLogoImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    if (file.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxW = 400;
+        const maxH = 160;
+
+        if (width > maxW || height > maxH) {
+          const ratio = Math.min(maxW / width, maxH / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        const optimizedDataUrl = canvas.toDataURL('image/png');
+        resolve(optimizedDataUrl);
+      };
+      img.onerror = () => resolve(e.target?.result as string);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 interface AdminPortalProps {
   packages: HolidayPackage[];
   visas: VisaService[];
@@ -144,10 +190,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // Logo management state
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string>(() => {
-    return localStorage.getItem('custom_logo_data') || '/logo.png';
+    return sheetsService.getLogoUrl() || localStorage.getItem('custom_logo_data') || '/logo.png';
   });
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isSyncingLogo, setIsSyncingLogo] = useState(false);
   const [logoMessage, setLogoMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [logoMeta, setLogoMeta] = useState<{ updatedAt?: string; updatedBy?: string }>(() => {
+    return sheetsService.getLogoMeta();
+  });
+
+  // Keep logo preview in sync if updated from external sync or sheet refresh
+  useEffect(() => {
+    const handleLogoUpdate = () => {
+      const current = sheetsService.getLogoUrl() || localStorage.getItem('custom_logo_data') || `/logo.png?v=${Date.now()}`;
+      setLogoPreviewUrl(current);
+      setLogoMeta(sheetsService.getLogoMeta());
+    };
+    window.addEventListener('logo-updated', handleLogoUpdate);
+    return () => window.removeEventListener('logo-updated', handleLogoUpdate);
+  }, []);
 
   const handleLogoFileUpload = async (file: File) => {
     if (!file) return;
@@ -159,61 +220,99 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setIsUploadingLogo(true);
     setLogoMessage(null);
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = reader.result as string;
+    try {
+      const dataUrl = await optimizeLogoImage(file);
+
+      // Attempt server backup if endpoint available
       try {
-        // Attempt to save to public/logo.png on server
-        const response = await fetch('/api/upload-logo', {
+        await fetch('/api/upload-logo', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dataUrl }),
         });
+      } catch {}
 
-        // Save to localStorage for instant persistence across reloads
-        localStorage.setItem('custom_logo_data', dataUrl);
-        setLogoPreviewUrl(dataUrl);
-        window.dispatchEvent(new Event('logo-updated'));
+      // Save to Google Sheets database under 'Branding_Settings' tab
+      const uploader = currentUser?.name || currentUser?.username || 'Super Admin';
+      const result = await sheetsService.saveLogoToSheets(dataUrl, uploader);
 
-        if (response.ok) {
-          setLogoMessage({
-            type: 'success',
-            text: 'Logo updated successfully! Saved to public/logo.png and applied across the entire portal.',
-          });
-        } else {
-          setLogoMessage({
-            type: 'success',
-            text: 'Logo applied to portal and cached in browser storage! (You can also overwrite public/logo.png in the project file explorer).',
-          });
-        }
-      } catch (err: any) {
-        localStorage.setItem('custom_logo_data', dataUrl);
-        setLogoPreviewUrl(dataUrl);
-        window.dispatchEvent(new Event('logo-updated'));
+      setLogoPreviewUrl(dataUrl);
+      setLogoMeta(sheetsService.getLogoMeta());
+
+      if (result.success) {
         setLogoMessage({
           type: 'success',
-          text: 'Logo applied to portal! (Cached in browser storage).',
+          text: result.message || "Logo successfully saved to Google Sheets ('Branding_Settings' tab) and broadcast live!",
         });
-      } finally {
-        setIsUploadingLogo(false);
+      } else {
+        setLogoMessage({
+          type: 'success',
+          text: result.message || 'Logo saved in browser storage. (Note: ' + (result.error || '') + ')',
+        });
       }
-    };
-    reader.onerror = () => {
-      setLogoMessage({ type: 'error', text: 'Failed to read image file.' });
+    } catch (err: any) {
+      setLogoMessage({
+        type: 'error',
+        text: 'Failed to process and save logo: ' + (err?.message || 'Unknown error'),
+      });
+    } finally {
       setIsUploadingLogo(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
-  const handleResetLogo = () => {
-    localStorage.removeItem('custom_logo_data');
-    const defaultUrl = `/logo.png?v=${Date.now()}`;
-    setLogoPreviewUrl(defaultUrl);
-    window.dispatchEvent(new Event('logo-updated'));
-    setLogoMessage({
-      type: 'success',
-      text: 'Reset to default public/logo.png successfully.',
-    });
+  const handleSyncLogoFromSheets = async () => {
+    setIsSyncingLogo(true);
+    setLogoMessage(null);
+    try {
+      const res = await sheetsService.syncLogoFromSheets();
+      if (res.success) {
+        if (res.logoUrl) {
+          setLogoPreviewUrl(res.logoUrl);
+          setLogoMeta(sheetsService.getLogoMeta());
+          setLogoMessage({
+            type: 'success',
+            text: "Logo refreshed from Google Sheets ('Branding_Settings' tab)!",
+          });
+        } else {
+          setLogoPreviewUrl('/logo.png');
+          setLogoMeta({});
+          setLogoMessage({
+            type: 'success',
+            text: 'Google Sheets returned default logo state.',
+          });
+        }
+      } else {
+        setLogoMessage({
+          type: 'error',
+          text: res.message || 'Failed to sync logo from Google Sheets.',
+        });
+      }
+    } catch (err: any) {
+      setLogoMessage({
+        type: 'error',
+        text: 'Sync error: ' + (err?.message || 'Network error'),
+      });
+    } finally {
+      setIsSyncingLogo(false);
+    }
+  };
+
+  const handleResetLogo = async () => {
+    setIsUploadingLogo(true);
+    setLogoMessage(null);
+    try {
+      const uploader = currentUser?.name || currentUser?.username || 'Super Admin';
+      await sheetsService.resetLogoInSheets(uploader);
+      const defaultUrl = `/logo.png?v=${Date.now()}`;
+      setLogoPreviewUrl(defaultUrl);
+      setLogoMeta({});
+      setLogoMessage({
+        type: 'success',
+        text: 'Reset logo to default in Google Sheets and local storage.',
+      });
+    } finally {
+      setIsUploadingLogo(false);
+    }
   };
 
   // Apps Script Settings Form State
@@ -1777,14 +1876,36 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                 </div>
               </div>
 
-              {/* Card 2: Interactive Upload Option */}
+              {/* Card 2: Interactive Upload & Google Sheets Sync */}
               <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-slate-900 font-bold text-base">
                     <UploadCloud className="w-5 h-5 text-indigo-600" />
-                    <h3>Add / Replace Logo File</h3>
+                    <h3>Google Sheets Logo Storage</h3>
                   </div>
-                  <span className="text-[11px] text-slate-400">Direct write to <code className="font-mono font-bold">public/logo.png</code></span>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <Database className="w-3.5 h-3.5" />
+                    <span>Sheet Tab: <code className="font-mono font-bold">Branding_Settings</code></span>
+                  </div>
+                </div>
+
+                {/* Google Sheets Sync Metadata */}
+                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="space-y-0.5">
+                    <span className="text-slate-500 block text-[11px]">Storage Mode:</span>
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Direct Google Sheets Persistence + Local Cache
+                    </span>
+                  </div>
+                  {logoMeta?.updatedBy && (
+                    <div className="text-right space-y-0.5">
+                      <span className="text-slate-400 block text-[10px]">Last Updated By:</span>
+                      <span className="font-medium text-slate-700">
+                        {logoMeta.updatedBy} {logoMeta.updatedAt ? `(${new Date(logoMeta.updatedAt).toLocaleDateString()})` : ''}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Dropzone */}
@@ -1796,7 +1917,7 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                       handleLogoFileUpload(e.dataTransfer.files[0]);
                     }
                   }}
-                  className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-50/50 hover:bg-blue-50/20 group text-center"
+                  className="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-50/50 hover:bg-indigo-50/20 group text-center"
                 >
                   <input
                     type="file"
@@ -1808,31 +1929,40 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                       }
                     }}
                   />
-                  <div className="w-14 h-14 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-sm">
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-sm">
                     {isUploadingLogo ? (
-                      <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
+                      <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
                     ) : (
-                      <UploadCloud className="w-7 h-7 text-blue-600" />
+                      <UploadCloud className="w-7 h-7 text-indigo-600" />
                     )}
                   </div>
                   <span className="text-sm font-bold text-slate-800 block">
-                    {isUploadingLogo ? 'Processing & saving logo...' : 'Click to browse or drag and drop your logo here'}
+                    {isUploadingLogo ? 'Saving logo directly to Google Sheets...' : 'Click to browse or drag and drop your logo here'}
                   </span>
-                  <span className="text-xs text-slate-500 mt-1">
-                    Accepts PNG, JPG, or SVG. Automatically updates <code className="font-mono text-slate-700 font-bold">public/logo.png</code>.
+                  <span className="text-xs text-slate-500 mt-1 max-w-md">
+                    Accepts PNG, JPG, or SVG. Uploaded logo is stored in Google Sheets (<code className="font-mono text-indigo-600 font-bold">Branding_Settings</code>) and updates the Header, Footer & Login Gate for all visitors.
                   </span>
                 </label>
 
                 {/* Action Buttons */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSyncLogoFromSheets}
+                      disabled={isSyncingLogo}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingLogo ? 'animate-spin' : ''}`} />
+                      <span>Sync from Sheets</span>
+                    </button>
                     <a
                       href={logoPreviewUrl}
                       download="logo.png"
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Download Current logo.png</span>
+                      <span>Download logo.png</span>
                     </a>
                     <button
                       type="button"
@@ -1843,7 +1973,7 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                       <span>Reset to Default</span>
                     </button>
                   </div>
-                  <span className="text-[11px] text-slate-400 font-medium">Auto-synced to Header & Footer</span>
+                  <span className="text-[11px] text-slate-400 font-medium">Synced across all devices</span>
                 </div>
               </div>
 

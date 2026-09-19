@@ -1,4 +1,5 @@
 import { AdminUser, AdminRole, ModulePermissions, SecurityAuditLog } from '../types';
+import { sheetsService } from './sheetsService';
 
 const CREDENTIALS_KEY = 'tripmytour_admin_credentials';
 const USERS_STORAGE_KEY = 'tripmytour_admin_users_v2';
@@ -89,6 +90,42 @@ class AdminAuthService {
 
   constructor() {
     this.initDefaults();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('sheets-staff-synced', (e: any) => {
+        if (e.detail && Array.isArray(e.detail) && e.detail.length > 0) {
+          this.syncFromSheets(e.detail);
+        }
+      });
+    }
+  }
+
+  public syncFromSheets(remoteUsers: AdminUser[]): void {
+    if (!Array.isArray(remoteUsers) || remoteUsers.length === 0) return;
+    try {
+      const existing = this.getAllUsers();
+      const mergedMap = new Map<string, AdminUser>();
+      existing.forEach((u) => mergedMap.set(u.id, u));
+
+      remoteUsers.forEach((ru) => {
+        let perms = ru.permissions;
+        if (typeof perms === 'string') {
+          try {
+            perms = JSON.parse(perms);
+          } catch (e) {}
+        }
+        mergedMap.set(ru.id, {
+          ...ru,
+          permissions: perms || DEFAULT_PERMISSIONS[ru.role] || DEFAULT_PERMISSIONS['Lead Specialist'],
+          active: ru.active === true || String(ru.active).toLowerCase() === 'true',
+        });
+      });
+
+      const mergedList = Array.from(mergedMap.values());
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(mergedList));
+      this.notify();
+    } catch (e) {
+      console.warn('Failed to merge remote users from sheets:', e);
+    }
   }
 
   private initDefaults(): void {
@@ -205,6 +242,11 @@ class AdminAuthService {
     const updatedUsers = [...users, newUser];
     this.saveUsers(updatedUsers);
 
+    // Synchronize to Google Sheets Staff_Users tab
+    sheetsService.saveStaffUser(newUser).catch((err) => {
+      console.warn('Google Sheets staff sync notice:', err);
+    });
+
     this.logAudit({
       action: 'USER_CREATED',
       details: `Super Admin created user '${newUser.name}' (${newUser.username}) with role '${newUser.role}'.`,
@@ -212,9 +254,43 @@ class AdminAuthService {
 
     return {
       success: true,
-      message: `User '${newUser.name}' successfully created with role: ${newUser.role}!`,
+      message: `User '${newUser.name}' created with role: ${newUser.role} (synced with Google Sheets)!`,
       user: newUser,
     };
+  }
+
+  public async createUserAsync(userData: {
+    name: string;
+    username: string;
+    email: string;
+    password?: string;
+    role: AdminRole;
+    permissions?: ModulePermissions;
+    active?: boolean;
+  }): Promise<{ success: boolean; message: string; user?: AdminUser; sheetsSynced?: boolean }> {
+    const res = this.createUser(userData);
+    if (!res.success || !res.user) {
+      return res;
+    }
+
+    try {
+      const sheetsRes = await sheetsService.saveStaffUser(res.user);
+      return {
+        success: true,
+        message: sheetsRes.success
+          ? `User '${res.user.name}' created and saved to Google Sheets!`
+          : `User '${res.user.name}' created locally. (${sheetsRes.message || sheetsRes.error || ''})`,
+        user: res.user,
+        sheetsSynced: sheetsRes.success,
+      };
+    } catch (err: any) {
+      return {
+        success: true,
+        message: `User '${res.user.name}' created locally. (Sheets sync pending: ${err?.message || ''})`,
+        user: res.user,
+        sheetsSynced: false,
+      };
+    }
   }
 
   public updateUser(
@@ -268,6 +344,11 @@ class AdminAuthService {
     users[targetIdx] = updatedUser;
     this.saveUsers(users);
 
+    // Sync to Google Sheets
+    sheetsService.saveStaffUser(updatedUser).catch((err) => {
+      console.warn('Google Sheets staff update notice:', err);
+    });
+
     // If current logged-in user was updated, sync session state
     const currentUser = this.getCurrentUser();
     if (currentUser && currentUser.id === id) {
@@ -281,9 +362,38 @@ class AdminAuthService {
 
     return {
       success: true,
-      message: `User '${updatedUser.name}' updated successfully!`,
+      message: `User '${updatedUser.name}' updated successfully (synced to Google Sheets)!`,
       user: updatedUser,
     };
+  }
+
+  public async updateUserAsync(
+    id: string,
+    updates: Partial<AdminUser> & { newPassword?: string }
+  ): Promise<{ success: boolean; message: string; user?: AdminUser; sheetsSynced?: boolean }> {
+    const res = this.updateUser(id, updates);
+    if (!res.success || !res.user) {
+      return res;
+    }
+
+    try {
+      const sheetsRes = await sheetsService.saveStaffUser(res.user);
+      return {
+        success: true,
+        message: sheetsRes.success
+          ? `User '${res.user.name}' updated and synced to Google Sheets!`
+          : `User '${res.user.name}' updated locally. (${sheetsRes.message || sheetsRes.error || ''})`,
+        user: res.user,
+        sheetsSynced: sheetsRes.success,
+      };
+    } catch {
+      return {
+        success: true,
+        message: `User '${res.user.name}' updated locally.`,
+        user: res.user,
+        sheetsSynced: false,
+      };
+    }
   }
 
   public toggleUserActive(id: string): { success: boolean; message: string; active?: boolean } {
@@ -299,6 +409,16 @@ class AdminAuthService {
     return this.updateUser(id, { active: nextActive }).success
       ? { success: true, message: `User ${user.name} is now ${nextActive ? 'Active' : 'Suspended'}.`, active: nextActive }
       : { success: false, message: 'Failed to update user status.' };
+  }
+
+  public async toggleUserActiveAsync(id: string): Promise<{ success: boolean; message: string; active?: boolean }> {
+    const res = this.toggleUserActive(id);
+    if (!res.success) return res;
+    const user = this.getUserById(id);
+    if (user) {
+      await sheetsService.saveStaffUser(user).catch(() => {});
+    }
+    return res;
   }
 
   public deleteUser(id: string): { success: boolean; message: string } {
@@ -321,12 +441,35 @@ class AdminAuthService {
     const filtered = users.filter((u) => u.id !== id);
     this.saveUsers(filtered);
 
+    // Sync deletion to Google Sheets
+    sheetsService.deleteStaffUser(id).catch((err) => {
+      console.warn('Google Sheets staff delete notice:', err);
+    });
+
     this.logAudit({
       action: 'USER_DELETED',
       details: `Staff user '${user.name}' (${user.username}) was permanently removed by Super Admin.`,
     });
 
     return { success: true, message: `User '${user.name}' has been deleted.` };
+  }
+
+  public async deleteUserAsync(id: string): Promise<{ success: boolean; message: string; sheetsSynced?: boolean }> {
+    const res = this.deleteUser(id);
+    if (!res.success) return res;
+
+    try {
+      const sheetsRes = await sheetsService.deleteStaffUser(id);
+      return {
+        success: true,
+        message: sheetsRes.success
+          ? 'Staff user deleted and removed from Google Sheets database.'
+          : 'Staff user deleted locally.',
+        sheetsSynced: sheetsRes.success,
+      };
+    } catch {
+      return { success: true, message: 'Staff user deleted locally.', sheetsSynced: false };
+    }
   }
 
   // =========================================================================
@@ -564,6 +707,145 @@ class AdminAuthService {
       success: true,
       message: `Welcome back, ${sessionUser.name}!`,
       user: sessionUser,
+    };
+  }
+
+  public async loginAsync(
+    identifier: string,
+    passwordAttempt: string,
+    rememberMe: boolean = true
+  ): Promise<{
+    success: boolean;
+    message: string;
+    user?: AdminUser;
+    remainingAttempts?: number;
+    lockoutSeconds?: number;
+    validatedVia?: 'google_sheets_apps_script' | 'local_cache';
+  }> {
+    const lockout = this.getLockoutState();
+    if (lockout.isLocked) {
+      return {
+        success: false,
+        message: `Account is temporarily locked due to consecutive failed attempts. Please retry in ${lockout.remainingSeconds}s.`,
+        lockoutSeconds: lockout.remainingSeconds,
+      };
+    }
+
+    const cleanId = (identifier || '').trim().toLowerCase();
+    const cleanPassword = (passwordAttempt || '').trim();
+
+    if (!cleanId || !cleanPassword) {
+      return { success: false, message: 'Please enter both username/email and password.' };
+    }
+
+    // Attempt live Google Apps Script validation against Staff_Users sheet
+    const sheetsCfg = sheetsService.getConfig();
+    const hasActiveSheets = !!sheetsCfg.webAppUrl && sheetsService.isValidWebAppUrl(sheetsCfg.webAppUrl);
+
+    if (hasActiveSheets) {
+      try {
+        const valRes = await sheetsService.validateStaffWithAppsScript(cleanId, cleanPassword);
+
+        if (valRes.success && valRes.user) {
+          // Successfully validated directly against Google Sheets staff database!
+          this.clearFailedAttempts();
+
+          const remoteUser = valRes.user;
+          let userPerms = remoteUser.permissions;
+          if (typeof userPerms === 'string') {
+            try {
+              userPerms = JSON.parse(userPerms);
+            } catch (e) {}
+          }
+
+          const now = new Date().toISOString();
+          const expiresAt = new Date(
+            Date.now() + (rememberMe ? 30 * 24 * 60 * 60 * 1000 : 12 * 60 * 60 * 1000)
+          ).toISOString();
+
+          const sessionUser: AdminUser = {
+            ...remoteUser,
+            permissions: userPerms || DEFAULT_PERMISSIONS[remoteUser.role] || DEFAULT_PERMISSIONS['Lead Specialist'],
+            lastLoginAt: now,
+            sessionExpiresAt: expiresAt,
+          };
+          delete sessionUser.password;
+
+          // Merge into local cache so future operations have the updated staff record
+          const allUsers = this.getAllUsers();
+          const existIdx = allUsers.findIndex(
+            (u) =>
+              u.id === sessionUser.id ||
+              u.username.toLowerCase() === cleanId ||
+              u.email.toLowerCase() === cleanId
+          );
+          if (existIdx >= 0) {
+            allUsers[existIdx] = { ...allUsers[existIdx], ...sessionUser };
+          } else {
+            allUsers.push(sessionUser);
+          }
+          this.saveUsers(allUsers);
+
+          const sessionPayload = JSON.stringify({
+            user: sessionUser,
+            token: 'tmt_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
+            loginTimestamp: now,
+            sessionExpiresAt: expiresAt,
+            rememberMe,
+            validatedVia: 'google_sheets_apps_script',
+          });
+
+          if (rememberMe) {
+            localStorage.setItem(SESSION_LOCAL_KEY, sessionPayload);
+            sessionStorage.removeItem(SESSION_SESSION_KEY);
+          } else {
+            sessionStorage.setItem(SESSION_SESSION_KEY, sessionPayload);
+            localStorage.removeItem(SESSION_LOCAL_KEY);
+          }
+
+          this.logAudit({
+            action: 'LOGIN_SUCCESS',
+            details: `'${sessionUser.name}' (${sessionUser.role}) authenticated via Google Apps Script Staff_Users sheet.`,
+          });
+
+          this.notify();
+
+          return {
+            success: true,
+            message: `Welcome back, ${sessionUser.name}! (Authenticated via Google Sheets Staff Database)`,
+            user: sessionUser,
+            validatedVia: 'google_sheets_apps_script',
+          };
+        } else if (
+          valRes.error &&
+          !valRes.error.includes('Failed to communicate') &&
+          !valRes.error.includes('No active Google Apps Script')
+        ) {
+          // Explicit rejection from Google Apps Script (e.g., incorrect password or suspended in sheet)
+          const failInfo = this.recordFailedAttempt(identifier);
+          if (failInfo.isLocked) {
+            return {
+              success: false,
+              message: `Too many invalid attempts. Admin portal is locked for ${failInfo.remainingSeconds} seconds.`,
+              lockoutSeconds: failInfo.remainingSeconds,
+            };
+          }
+          return {
+            success: false,
+            message: `${valRes.error} (${failInfo.remainingAttempts} attempts remaining)`,
+            remainingAttempts: failInfo.remainingAttempts,
+          };
+        }
+      } catch (err) {
+        console.warn('Apps Script validation fallback to local cache:', err);
+      }
+    }
+
+    // Local fallback when Google Sheets Web App is unreachable or offline
+    const localRes = this.login(identifier, passwordAttempt, rememberMe);
+    return {
+      ...localRes,
+      validatedVia: 'local_cache',
     };
   }
 

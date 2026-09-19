@@ -1,4 +1,4 @@
-import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig } from '../types';
+import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig, AdminUser } from '../types';
 import { DEFAULT_HOLIDAY_PACKAGES, DEFAULT_VISA_SERVICES } from '../data/initialData';
 import { leadEmailService } from './leadEmailService';
 import { FILE_SYSTEM_SHEETS_CONFIG } from '../config/sheetsConfig';
@@ -9,6 +9,9 @@ const STORAGE_KEYS = {
   VISAS: 'tripmytour_sheets_visas_v2',
   BOOKINGS: 'tripmytour_sheets_bookings_v2',
   APPLICATIONS: 'tripmytour_sheets_applications_v2',
+  STAFF: 'tripmytour_sheets_staff_v2',
+  LOGO: 'custom_logo_data',
+  LOGO_META: 'tripmytour_logo_meta',
 };
 
 // Detect any Web App URL injected via Vite / Vercel Environment Variables
@@ -44,6 +47,9 @@ export class SheetsService {
   private visas: VisaService[] = [];
   private bookings: BookingInquiry[] = [];
   private applications: VisaApplication[] = [];
+  private staffUsers: AdminUser[] = [];
+  private logoUrl: string = '';
+  private logoMeta: { updatedAt?: string; updatedBy?: string } = {};
   private isInitializedFromSheets = false;
 
   private listeners: (() => void)[] = [];
@@ -206,11 +212,33 @@ export class SheetsService {
       if (appRaw) {
         this.applications = JSON.parse(appRaw);
       }
+
+      const staffRaw = localStorage.getItem(STORAGE_KEYS.STAFF);
+      if (staffRaw) {
+        this.staffUsers = JSON.parse(staffRaw);
+      }
+
+      const logoRaw = localStorage.getItem(STORAGE_KEYS.LOGO);
+      if (logoRaw) {
+        this.logoUrl = logoRaw;
+      }
+
+      const logoMetaRaw = localStorage.getItem(STORAGE_KEYS.LOGO_META);
+      if (logoMetaRaw) {
+        try {
+          this.logoMeta = JSON.parse(logoMetaRaw);
+        } catch {
+          this.logoMeta = {};
+        }
+      }
     } catch (e) {
       this.packages = [...DEFAULT_HOLIDAY_PACKAGES];
       this.visas = [...DEFAULT_VISA_SERVICES];
       this.bookings = [];
       this.applications = [];
+      this.staffUsers = [];
+      this.logoUrl = '';
+      this.logoMeta = {};
     }
   }
 
@@ -629,6 +657,45 @@ export class SheetsService {
       localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(this.applications));
       hasChanges = true;
     }
+    if (Array.isArray(data.staffUsers) && data.staffUsers.length > 0) {
+      this.staffUsers = data.staffUsers.map((u: any) => {
+        let perms = u.permissions;
+        if (typeof perms === 'string') {
+          try {
+            perms = JSON.parse(perms);
+          } catch (e) {}
+        }
+        return {
+          ...u,
+          active: u.active === true || u.active === 'true' || u.active === 1 || u.active === '1',
+          permissions: perms,
+        };
+      });
+      localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(this.staffUsers));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sheets-staff-synced', { detail: this.staffUsers }));
+      }
+      hasChanges = true;
+    }
+
+    if (typeof data.logo === 'string') {
+      const trimmedLogo = data.logo.trim();
+      if (trimmedLogo) {
+        this.logoUrl = trimmedLogo;
+        localStorage.setItem(STORAGE_KEYS.LOGO, trimmedLogo);
+        if (data.logoUpdatedAt || data.logoUpdatedBy) {
+          this.logoMeta = {
+            updatedAt: data.logoUpdatedAt || new Date().toISOString(),
+            updatedBy: data.logoUpdatedBy || 'Google Sheets',
+          };
+          localStorage.setItem(STORAGE_KEYS.LOGO_META, JSON.stringify(this.logoMeta));
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('logo-updated'));
+        }
+        hasChanges = true;
+      }
+    }
 
     if (hasChanges) {
       this.isInitializedFromSheets = true;
@@ -925,6 +992,278 @@ export class SheetsService {
       return true;
     }
     return false;
+  }
+
+  // --------------------------------------------------------------------------
+  // STAFF USERS & ROLES (GOOGLE SHEETS AUTHORITATIVE)
+  // --------------------------------------------------------------------------
+
+  public getStaffUsers(): AdminUser[] {
+    return [...this.staffUsers];
+  }
+
+  public async saveStaffUser(user: AdminUser): Promise<{ success: boolean; message: string; error?: string }> {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      const idx = this.staffUsers.findIndex((u) => u.id === user.id);
+      if (idx >= 0) {
+        this.staffUsers[idx] = user;
+      } else {
+        this.staffUsers.push(user);
+      }
+      localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(this.staffUsers));
+      this.notify();
+      return {
+        success: true,
+        message: 'Saved to local system. Connect Google Apps Script to synchronize with Google Sheets.',
+      };
+    }
+
+    const result = await this.executeSheetsAction('saveStaffUser', { data: user });
+    if (!result.success) {
+      return {
+        success: false,
+        message: 'Failed to save staff user to Google Sheets.',
+        error: result.error || 'Google Apps Script failed to save staff user.',
+      };
+    }
+
+    const idx = this.staffUsers.findIndex((u) => u.id === user.id);
+    if (idx >= 0) {
+      this.staffUsers[idx] = user;
+    } else {
+      this.staffUsers.push(user);
+    }
+    localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(this.staffUsers));
+    this.notify();
+
+    return {
+      success: true,
+      message: `Staff member '${user.name}' successfully saved and synced to Google Sheets!`,
+    };
+  }
+
+  public async deleteStaffUser(id: string): Promise<{ success: boolean; message: string; error?: string }> {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      this.staffUsers = this.staffUsers.filter((u) => u.id !== id);
+      localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(this.staffUsers));
+      this.notify();
+      return { success: true, message: 'Staff member removed locally.' };
+    }
+
+    const result = await this.executeSheetsAction('deleteStaffUser', { id });
+    if (!result.success) {
+      return {
+        success: false,
+        message: 'Failed to delete staff user from Google Sheets.',
+        error: result.error,
+      };
+    }
+
+    this.staffUsers = this.staffUsers.filter((u) => u.id !== id);
+    localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(this.staffUsers));
+    this.notify();
+
+    return {
+      success: true,
+      message: 'Staff user deleted from Google Sheets database successfully.',
+    };
+  }
+
+  public async validateStaffWithAppsScript(
+    identifier: string,
+    passwordAttempt: string
+  ): Promise<{ success: boolean; message?: string; user?: AdminUser; error?: string }> {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      return {
+        success: false,
+        error: 'No active Google Apps Script Web App configured.',
+      };
+    }
+
+    try {
+      const result = await this.executeSheetsAction('validateStaff', {
+        data: { identifier, password: passwordAttempt },
+      });
+
+      if (result.success && (result.data?.user || (result as any).user)) {
+        const validatedUser = result.data?.user || (result as any).user;
+        return {
+          success: true,
+          user: validatedUser,
+          message: result.message || 'Credentials validated by Google Apps Script.',
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || 'Invalid credentials or staff member inactive in Google Sheets.',
+        };
+      }
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Failed to communicate with Google Apps Script.',
+      };
+    }
+  }
+
+  public getLogoUrl(): string {
+    return this.logoUrl || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOGO) || '' : '');
+  }
+
+  public getLogoMeta(): { updatedAt?: string; updatedBy?: string } {
+    return { ...this.logoMeta };
+  }
+
+  public async saveLogoToSheets(
+    dataUrl: string,
+    updatedBy?: string
+  ): Promise<{ success: boolean; message: string; error?: string }> {
+    const trimmed = (dataUrl || '').trim();
+    if (!trimmed) {
+      return { success: false, message: 'Invalid logo data provided.' };
+    }
+
+    // Immediately cache locally and notify frontend
+    this.logoUrl = trimmed;
+    localStorage.setItem(STORAGE_KEYS.LOGO, trimmed);
+    this.logoMeta = {
+      updatedAt: new Date().toISOString(),
+      updatedBy: updatedBy || 'Super Admin',
+    };
+    localStorage.setItem(STORAGE_KEYS.LOGO_META, JSON.stringify(this.logoMeta));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('logo-updated'));
+    }
+    this.notify();
+
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      return {
+        success: true,
+        message: 'Logo updated in browser local storage. Connect Google Sheets Web App URL for remote sync across devices.',
+      };
+    }
+
+    try {
+      const res = await this.executeSheetsAction('saveLogo', {
+        data: {
+          logo: trimmed,
+          updatedBy: updatedBy || 'Super Admin',
+        },
+      });
+
+      if (res.success) {
+        return {
+          success: true,
+          message: "Logo successfully saved and synced to Google Sheets ('Branding_Settings' tab)!",
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Saved locally, but Google Sheets returned an error: ' + (res.error || 'Unknown error'),
+          error: res.error,
+        };
+      }
+    } catch (err: any) {
+      return {
+        success: false,
+        message: 'Saved locally, but could not reach Google Sheets Web App.',
+        error: err?.message,
+      };
+    }
+  }
+
+  public async resetLogoInSheets(
+    updatedBy?: string
+  ): Promise<{ success: boolean; message: string; error?: string }> {
+    this.logoUrl = '';
+    this.logoMeta = {};
+    localStorage.removeItem(STORAGE_KEYS.LOGO);
+    localStorage.removeItem(STORAGE_KEYS.LOGO_META);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('logo-updated'));
+    }
+    this.notify();
+
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      return {
+        success: true,
+        message: 'Logo reset to default public/logo.png locally.',
+      };
+    }
+
+    try {
+      const res = await this.executeSheetsAction('resetLogo', {
+        data: { updatedBy: updatedBy || 'Super Admin' },
+      });
+      return {
+        success: res.success,
+        message: res.message || 'Logo reset to default in Google Sheets!',
+        error: res.error,
+      };
+    } catch (err: any) {
+      return {
+        success: true,
+        message: 'Reset locally (failed to notify Google Sheets: ' + (err?.message || '') + ')',
+      };
+    }
+  }
+
+  public async syncLogoFromSheets(): Promise<{ success: boolean; logoUrl?: string; message: string }> {
+    const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+    if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      return {
+        success: false,
+        message: 'Google Sheets Web App URL is not connected.',
+      };
+    }
+
+    try {
+      const res = await this.executeSheetsAction('getLogo');
+      if (res.success && res.data) {
+        const remoteLogo = (res.data.logo || (res as any).logo || '').trim();
+        if (remoteLogo) {
+          this.logoUrl = remoteLogo;
+          localStorage.setItem(STORAGE_KEYS.LOGO, remoteLogo);
+          if (res.data.updatedAt || res.data.updatedBy) {
+            this.logoMeta = {
+              updatedAt: res.data.updatedAt,
+              updatedBy: res.data.updatedBy,
+            };
+            localStorage.setItem(STORAGE_KEYS.LOGO_META, JSON.stringify(this.logoMeta));
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('logo-updated'));
+          }
+          this.notify();
+          return {
+            success: true,
+            logoUrl: remoteLogo,
+            message: "Logo retrieved and synced from Google Sheets ('Branding_Settings' tab)!",
+          };
+        } else {
+          return {
+            success: true,
+            logoUrl: '',
+            message: 'No custom logo found in Google Sheets (using default logo.png).',
+          };
+        }
+      } else {
+        return {
+          success: false,
+          message: res.error || 'Could not fetch logo from Google Sheets.',
+        };
+      }
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Failed to sync logo from Google Sheets.',
+      };
+    }
   }
 
   // Reset database back to default seed template
