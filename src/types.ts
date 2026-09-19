@@ -60,7 +60,7 @@ export interface BookingInquiry {
   packageId: string;
   packageTitle: string;
   customerName: string;
-  customerEmail: string;
+  customerEmail?: string;
   customerPhone: string;
   travelDate: string;
   travelersAdults: number;
@@ -78,7 +78,7 @@ export interface VisaApplication {
   country: string;
   visaType: string;
   applicantName: string;
-  applicantEmail: string;
+  applicantEmail?: string;
   applicantPhone: string;
   passportNumber: string;
   nationality: string;

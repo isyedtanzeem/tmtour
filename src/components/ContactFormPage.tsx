@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { HolidayPackage, BookingInquiry } from '../types';
 import { sheetsService } from '../services/sheetsService';
-import { BUSINESS_INFO, formatCurrency, formatIndianMobileInput, isValidIndianPhone, getPackageWhatsAppUrl, getGeneralWhatsAppUrl } from '../utils/formatters';
+import { BUSINESS_INFO, formatCurrency, formatIndianMobileInput, isValidIndianPhone, getPackageWhatsAppUrl, getGeneralWhatsAppUrl, generateInquiryId, formatDateDDMMYYYY } from '../utils/formatters';
 
 interface ContactFormPageProps {
   preselectedPackage?: HolidayPackage | null;
@@ -65,8 +65,8 @@ export const ContactFormPage: React.FC<ContactFormPageProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || !phone.trim()) {
-      alert('Please fill out your name, email, and mobile number.');
+    if (!name.trim() || !phone.trim()) {
+      alert('Please fill out your name and mobile number.');
       return;
     }
 
@@ -76,7 +76,8 @@ export const ContactFormPage: React.FC<ContactFormPageProps> = ({
     }
 
     setIsSubmitting(true);
-    const inqId = `INQ-${Date.now().toString().slice(-6)}`;
+    const inqType = inquiryType.toLowerCase().includes('visa') ? 'visa' : 'holiday';
+    const inqId = generateInquiryId(inqType);
     const packageTitle = activePackage ? activePackage.title : (customDestination ? `Custom Trip: ${customDestination}` : `${inquiryType} Inquiry`);
     const estPrice = activePackage ? (activePackage.price * travelersAdults + Math.round(activePackage.price * 0.7) * travelersChildren) : 0;
 
@@ -93,7 +94,7 @@ export const ContactFormPage: React.FC<ContactFormPageProps> = ({
       customerName: name,
       customerEmail: email,
       customerPhone: phone,
-      travelDate: travelDate || 'Flexible / To be confirmed',
+      travelDate: formatDateDDMMYYYY(travelDate) || travelDate || 'Flexible / To be confirmed',
       travelersAdults,
       travelersChildren,
       totalPrice: estPrice,
@@ -268,7 +269,7 @@ export const ContactFormPage: React.FC<ContactFormPageProps> = ({
 
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 max-w-md mx-auto text-left text-xs space-y-2">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-200">
-                    <span className="text-slate-500 font-medium">Inquiry Reference Number:</span>
+                    <span className="text-slate-500 font-medium">Inquiry ID:</span>
                     <span className="font-mono font-bold text-sm text-blue-700">{submittedInquiry.id}</span>
                   </div>
 
@@ -284,12 +285,12 @@ export const ContactFormPage: React.FC<ContactFormPageProps> = ({
 
                   <div className="flex justify-between py-1 border-b border-slate-200">
                     <span className="text-slate-500">Contact Email:</span>
-                    <span className="font-semibold text-slate-900">{submittedInquiry.customerEmail}</span>
+                    <span className="font-semibold text-slate-900">{submittedInquiry.customerEmail || 'Not provided'}</span>
                   </div>
 
                   <div className="flex justify-between py-1 border-b border-slate-200">
                     <span className="text-slate-500">Preferred Travel Date:</span>
-                    <span className="font-semibold text-slate-900">{submittedInquiry.travelDate}</span>
+                    <span className="font-semibold text-slate-900">{formatDateDDMMYYYY(submittedInquiry.travelDate)}</span>
                   </div>
 
                   <div className="flex justify-between py-1">
@@ -302,7 +303,7 @@ export const ContactFormPage: React.FC<ContactFormPageProps> = ({
 
                 <div className="pt-4 flex flex-col sm:flex-row justify-center gap-3">
                   <a
-                    href={`https://wa.me/${BUSINESS_INFO.phoneRaw}?text=${encodeURIComponent(`Hello ${BUSINESS_INFO.name}, I have just submitted contact inquiry #${submittedInquiry.id} regarding "${submittedInquiry.packageTitle}" for date: ${submittedInquiry.travelDate}. Please share details and availability.`)}`}
+                    href={`https://wa.me/${BUSINESS_INFO.phoneRaw}?text=${encodeURIComponent(`Hello ${BUSINESS_INFO.name}, I have just submitted contact inquiry #${submittedInquiry.id} regarding "${submittedInquiry.packageTitle}" for travel date: ${formatDateDDMMYYYY(submittedInquiry.travelDate)}. Please share details and availability.`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
@@ -393,12 +394,11 @@ export const ContactFormPage: React.FC<ContactFormPageProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Email Address *
+                      Email Address <span className="text-slate-400 font-normal">(Optional)</span>
                     </label>
                     <input
                       type="email"
-                      required
-                      placeholder="name@example.com"
+                      placeholder="name@example.com (optional)"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"

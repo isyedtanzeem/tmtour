@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { adminAuthService } from '../services/adminAuthService';
 import { AdminUser, SecurityAuditLog } from '../types';
+import { formatDateDDMMYYYY } from '../utils/formatters';
 
 interface AdminSecurityManagerProps {
   currentUser: AdminUser | null;
@@ -475,7 +476,7 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
                   </td>
                   <td className="py-3 px-3 text-slate-500 font-mono whitespace-nowrap text-[11px]">
                     {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} •{' '}
-                    {new Date(log.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    {formatDateDDMMYYYY(log.timestamp)}
                   </td>
                   <td className="py-3 px-3 text-slate-800 font-medium">
                     {log.details}

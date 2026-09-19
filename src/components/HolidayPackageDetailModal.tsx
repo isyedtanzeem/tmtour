@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { HolidayPackage, BookingInquiry } from '../types';
 import { sheetsService } from '../services/sheetsService';
-import { formatCurrency, formatIndianMobileInput, isValidIndianPhone, getPackageWhatsAppUrl, BUSINESS_INFO } from '../utils/formatters';
+import { formatCurrency, formatIndianMobileInput, isValidIndianPhone, getPackageWhatsAppUrl, BUSINESS_INFO, generateInquiryId, formatDateDDMMYYYY } from '../utils/formatters';
 
 interface HolidayPackageDetailModalProps {
   pkg: HolidayPackage;
@@ -59,8 +59,8 @@ export const HolidayPackageDetailModal: React.FC<HolidayPackageDetailModalProps>
 
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!travelDate || !customerName || !customerEmail || !customerPhone) {
-      alert('Please fill out all required booking fields.');
+    if (!travelDate || !customerName || !customerPhone) {
+      alert('Please fill out all required booking fields (Name, Mobile Phone, and Departure Date).');
       return;
     }
 
@@ -71,13 +71,13 @@ export const HolidayPackageDetailModal: React.FC<HolidayPackageDetailModalProps>
 
     setIsSubmitting(true);
     const newBooking: BookingInquiry = {
-      id: `BK-${Date.now().toString().slice(-6)}`,
+      id: generateInquiryId('holiday'),
       packageId: pkg.id,
       packageTitle: pkg.title,
       customerName,
       customerEmail,
       customerPhone,
-      travelDate,
+      travelDate: formatDateDDMMYYYY(travelDate) || travelDate,
       travelersAdults: adults,
       travelersChildren: children,
       totalPrice: calculateTotal(),
@@ -329,7 +329,7 @@ export const HolidayPackageDetailModal: React.FC<HolidayPackageDetailModalProps>
 
                   <div className="bg-white p-4 rounded-xl border border-slate-200 text-left text-xs space-y-1.5">
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Inquiry Reference:</span>
+                      <span className="text-slate-500">Inquiry ID:</span>
                       <span className="font-mono font-bold text-slate-900">{bookingConfirmed.id}</span>
                     </div>
                     <div className="flex justify-between">
@@ -338,7 +338,7 @@ export const HolidayPackageDetailModal: React.FC<HolidayPackageDetailModalProps>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Date of Travel:</span>
-                      <span className="font-semibold text-slate-900">{bookingConfirmed.travelDate}</span>
+                      <span className="font-semibold text-slate-900">{formatDateDDMMYYYY(bookingConfirmed.travelDate)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Estimated Total:</span>
@@ -348,7 +348,7 @@ export const HolidayPackageDetailModal: React.FC<HolidayPackageDetailModalProps>
 
                   <div className="space-y-2">
                     <a
-                      href={`https://wa.me/${BUSINESS_INFO.phoneRaw}?text=${encodeURIComponent(`Hello ${BUSINESS_INFO.name}, I just submitted inquiry #${bookingConfirmed.id} for "${pkg.title}" (${bookingConfirmed.travelDate}). Please confirm receipt and share available discounts.`)}`}
+                      href={`https://wa.me/${BUSINESS_INFO.phoneRaw}?text=${encodeURIComponent(`Hello ${BUSINESS_INFO.name}, I just submitted inquiry #${bookingConfirmed.id} for "${pkg.title}" (${formatDateDDMMYYYY(bookingConfirmed.travelDate)}). Please confirm receipt and share available discounts.`)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
@@ -496,12 +496,11 @@ export const HolidayPackageDetailModal: React.FC<HolidayPackageDetailModalProps>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Email Address *
+                          Email Address <span className="text-slate-400 font-normal">(Optional)</span>
                         </label>
                         <input
                           type="email"
-                          required
-                          placeholder="name@example.com"
+                          placeholder="name@example.com (optional)"
                           value={customerEmail}
                           onChange={(e) => setCustomerEmail(e.target.value)}
                           className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"

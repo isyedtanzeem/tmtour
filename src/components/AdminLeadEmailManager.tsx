@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { leadEmailService } from '../services/leadEmailService';
 import { LeadEmailRecipient, LeadEmailSettings, LeadNotificationLog } from '../types';
+import { formatDateDDMMYYYY } from '../utils/formatters';
 
 export const AdminLeadEmailManager: React.FC = () => {
   const [settings, setSettings] = useState<LeadEmailSettings>(leadEmailService.getSettings());
@@ -862,7 +863,7 @@ export const AdminLeadEmailManager: React.FC = () => {
                       </div>
                       <div className="py-1.5 flex justify-between">
                         <span className="text-slate-500">Travel Date</span>
-                        <span className="font-medium text-right">15 Oct 2026</span>
+                        <span className="font-medium text-right">15/10/2026</span>
                       </div>
                       <div className="py-1.5 flex justify-between">
                         <span className="text-slate-500">Travelers</span>
@@ -990,7 +991,7 @@ export const AdminLeadEmailManager: React.FC = () => {
                         {log.type.toUpperCase()} LEAD
                       </span>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatDateDDMMYYYY(log.timestamp)} {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
 

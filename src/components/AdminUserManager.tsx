@@ -31,6 +31,7 @@ import {
 import { adminAuthService, DEFAULT_PERMISSIONS, VIEW_ONLY_LEADS_PERMISSIONS } from '../services/adminAuthService';
 import { sheetsService } from '../services/sheetsService';
 import { AdminUser, AdminRole, ModulePermissions } from '../types';
+import { formatDateDDMMYYYY } from '../utils/formatters';
 
 interface AdminUserManagerProps {
   currentUser: AdminUser | null;
@@ -627,7 +628,7 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
                         {u.lastLoginAt ? (
                           <div className="flex items-center gap-1">
                             <Clock className="w-3 h-3 text-slate-400" />
-                            <span>{new Date(u.lastLoginAt).toLocaleDateString()}</span>
+                            <span>{formatDateDDMMYYYY(u.lastLoginAt)}</span>
                           </div>
                         ) : (
                           <span className="text-slate-400 italic">Never logged in</span>

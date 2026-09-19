@@ -1192,7 +1192,7 @@ export class SheetsService {
     if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
       return {
         success: true,
-        message: 'Logo reset to default public/logo.png locally.',
+        message: 'Logo reset to default public/logo.svg locally.',
       };
     }
 
@@ -1249,7 +1249,7 @@ export class SheetsService {
           return {
             success: true,
             logoUrl: '',
-            message: 'No custom logo found in Google Sheets (using default logo.png).',
+            message: 'No custom logo found in Google Sheets (using default logo.svg).',
           };
         }
       } else {

@@ -22,7 +22,9 @@ import {
   formatCurrency, 
   formatIndianMobileInput, 
   isValidIndianPhone, 
-  BUSINESS_INFO 
+  BUSINESS_INFO,
+  generateInquiryId,
+  formatDateDDMMYYYY
 } from '../utils/formatters';
 
 interface PackageInquiryModalProps {
@@ -77,8 +79,8 @@ export const PackageInquiryModal: React.FC<PackageInquiryModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!customerName.trim() || !customerEmail.trim() || !customerPhone.trim() || !travelDate) {
-      alert('Please fill out all required inquiry fields (Name, Email, Mobile, and Departure Date).');
+    if (!customerName.trim() || !customerPhone.trim() || !travelDate) {
+      alert('Please fill out all required inquiry fields (Name, Mobile, and Departure Date).');
       return;
     }
 
@@ -89,13 +91,13 @@ export const PackageInquiryModal: React.FC<PackageInquiryModalProps> = ({
 
     setIsSubmitting(true);
     const newBooking: BookingInquiry = {
-      id: `BK-${Date.now().toString().slice(-6)}`,
+      id: generateInquiryId('holiday'),
       packageId: pkg.id,
       packageTitle: pkg.title,
       customerName: customerName.trim(),
       customerEmail: customerEmail.trim(),
       customerPhone: customerPhone.trim(),
-      travelDate,
+      travelDate: formatDateDDMMYYYY(travelDate) || travelDate,
       travelersAdults: adults,
       travelersChildren: children,
       totalPrice: calculateTotal(),
@@ -200,14 +202,14 @@ export const PackageInquiryModal: React.FC<PackageInquiryModalProps> = ({
               {/* Reference Summary Card */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left space-y-2.5 max-w-md mx-auto text-xs">
                 <div className="flex justify-between items-center py-1 border-b border-slate-200">
-                  <span className="text-slate-500 font-medium">Inquiry Reference ID:</span>
+                  <span className="text-slate-500 font-medium">Inquiry ID:</span>
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono font-bold text-sm text-emerald-700">
                       {confirmedBooking.id}
                     </span>
                     <button
                       onClick={handleCopyRef}
-                      title="Copy Reference ID"
+                      title="Copy Inquiry ID"
                       className="p-1 rounded hover:bg-slate-200 text-slate-600 cursor-pointer"
                     >
                       <Copy className="w-3.5 h-3.5" />
@@ -228,7 +230,7 @@ export const PackageInquiryModal: React.FC<PackageInquiryModalProps> = ({
 
                 <div className="flex justify-between py-1 border-b border-slate-200">
                   <span className="text-slate-500">Travel Date:</span>
-                  <span className="font-semibold text-slate-900">{confirmedBooking.travelDate}</span>
+                  <span className="font-semibold text-slate-900">{formatDateDDMMYYYY(confirmedBooking.travelDate)}</span>
                 </div>
 
                 <div className="flex justify-between py-1 border-b border-slate-200">
@@ -338,21 +340,20 @@ export const PackageInquiryModal: React.FC<PackageInquiryModalProps> = ({
                 {/* Email Address */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Email Address <span className="text-rose-500">*</span>
+                    Email Address <span className="text-slate-400 font-normal">(Optional)</span>
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="email"
-                      required
-                      placeholder="name@example.com"
+                      placeholder="name@example.com (optional)"
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                       className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900"
                     />
                   </div>
                   <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    Detailed quotation voucher
+                    Detailed quotation voucher (optional)
                   </span>
                 </div>
               </div>

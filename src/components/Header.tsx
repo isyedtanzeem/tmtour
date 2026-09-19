@@ -106,7 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline-block text-slate-600">|</span>
             <span className="hidden sm:flex items-center gap-1 text-emerald-400 font-medium">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Bengaluru Embassy & Travel Desk</span>
+              <span>Travel Desk</span>
             </span>
           </div>
 

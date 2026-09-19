@@ -46,7 +46,7 @@ import { AdminSecurityManager } from './AdminSecurityManager';
 import { AdminUserManager } from './AdminUserManager';
 import { adminAuthService } from '../services/adminAuthService';
 import { GOOGLE_APPS_SCRIPT_CODE } from '../services/appsScriptTemplate';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, formatDateDDMMYYYY } from '../utils/formatters';
 
 export type AdminTabType = 'packages' | 'visas' | 'bookings' | 'sheets' | 'emails' | 'security' | 'users';
 
@@ -1007,11 +1007,11 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                       <tr>
-                        <th className="py-3.5 px-4">Ref Number</th>
+                        <th className="py-3.5 px-4">Inquiry ID</th>
                         <th className="py-3.5 px-4">Country & Type</th>
                         <th className="py-3.5 px-4">Applicant</th>
                         <th className="py-3.5 px-4">Passport</th>
-                        <th className="py-3.5 px-4">Travel Date</th>
+                        <th className="py-3.5 px-4">Travel Date (DD/MM/YYYY)</th>
                         <th className="py-3.5 px-4">Amount</th>
                         <th className="py-3.5 px-4">{canManageLeadStatus ? 'Status (Click to Update)' : 'Status'}</th>
                       </tr>
@@ -1020,21 +1020,35 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                       {applications.map((app) => (
                         <tr key={app.id} className="hover:bg-slate-50/70">
                           <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                            {app.referenceNumber}
+                            {app.referenceNumber || app.id}
                           </td>
                           <td className="py-3.5 px-4">
                             <span className="font-semibold text-slate-800">{app.country}</span>
                             <span className="block text-[11px] text-slate-500">{app.visaType}</span>
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="font-semibold text-slate-900">{app.applicantName}</span>
-                            <span className="block text-[11px] text-slate-500">{app.applicantEmail}</span>
+                            <span className="font-semibold text-slate-900 block">{app.applicantName}</span>
+                            {app.applicantPhone && app.applicantPhone !== '#ERROR!' ? (
+                              <a
+                                href={`tel:${app.applicantPhone}`}
+                                className="text-[11px] font-medium text-emerald-700 hover:underline flex items-center gap-1 mt-0.5"
+                                title="Click to call applicant"
+                              >
+                                <span>📞</span>
+                                <span>{app.applicantPhone}</span>
+                              </a>
+                            ) : (
+                              <span className="block text-[11px] text-slate-400 italic">No mobile provided</span>
+                            )}
+                            {app.applicantEmail && app.applicantEmail !== '#ERROR!' && (
+                              <span className="block text-[10px] text-slate-400 mt-0.5">{app.applicantEmail}</span>
+                            )}
                           </td>
                           <td className="py-3.5 px-4 font-mono text-slate-700">
                             {app.passportNumber}
                           </td>
-                          <td className="py-3.5 px-4 text-slate-700">
-                            {app.travelDate}
+                          <td className="py-3.5 px-4 text-slate-800 font-semibold">
+                            {formatDateDDMMYYYY(app.travelDate)}
                           </td>
                           <td className="py-3.5 px-4 font-bold text-emerald-700">
                             {formatCurrency(app.totalAmount)}
@@ -1090,10 +1104,10 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                       <tr>
-                        <th className="py-3.5 px-4">Booking ID</th>
+                        <th className="py-3.5 px-4">Inquiry ID</th>
                         <th className="py-3.5 px-4">Tour Package</th>
                         <th className="py-3.5 px-4">Passenger</th>
-                        <th className="py-3.5 px-4">Departure Date</th>
+                        <th className="py-3.5 px-4">Departure Date (DD/MM/YYYY)</th>
                         <th className="py-3.5 px-4">Travelers</th>
                         <th className="py-3.5 px-4">Total</th>
                         <th className="py-3.5 px-4">Status</th>
@@ -1109,11 +1123,25 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                             {b.packageTitle}
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="font-semibold text-slate-900">{b.customerName}</span>
-                            <span className="block text-[11px] text-slate-500">{b.customerPhone}</span>
+                            <span className="font-semibold text-slate-900 block">{b.customerName}</span>
+                            {b.customerPhone && b.customerPhone !== '#ERROR!' ? (
+                              <a
+                                href={`tel:${b.customerPhone}`}
+                                className="text-[11px] font-medium text-blue-700 hover:underline flex items-center gap-1 mt-0.5"
+                                title="Click to call customer"
+                              >
+                                <span>📞</span>
+                                <span>{b.customerPhone}</span>
+                              </a>
+                            ) : (
+                              <span className="block text-[11px] text-slate-400 italic">No mobile provided</span>
+                            )}
+                            {b.customerEmail && b.customerEmail !== '#ERROR!' && (
+                              <span className="block text-[10px] text-slate-400 mt-0.5">{b.customerEmail}</span>
+                            )}
                           </td>
-                          <td className="py-3.5 px-4 text-slate-700">
-                            {b.travelDate}
+                          <td className="py-3.5 px-4 text-slate-800 font-semibold">
+                            {formatDateDDMMYYYY(b.travelDate)}
                           </td>
                           <td className="py-3.5 px-4 text-slate-700">
                             {b.travelersAdults} Adults{b.travelersChildren > 0 ? `, ${b.travelersChildren} Children` : ''}

@@ -1,4 +1,5 @@
 import { BookingInquiry, VisaApplication, LeadEmailRecipient, LeadEmailSettings, LeadNotificationLog } from '../types';
+import { formatDateDDMMYYYY, generateInquiryId } from '../utils/formatters';
 
 const STORAGE_KEYS = {
   SETTINGS: 'tripmytour_lead_emails_v1',
@@ -372,13 +373,13 @@ export class LeadEmailService {
 
     if (type === 'holiday') {
       const sampleBooking: BookingInquiry = {
-        id: `TEST-BK-${Math.floor(1000 + Math.random() * 9000)}`,
+        id: generateInquiryId('holiday'),
         packageId: 'pkg-dubai',
         packageTitle: 'Royal Dubai & Abu Dhabi Odyssey with Desert Safari',
         customerName: 'Rahul Verma (Sample Test Lead)',
         customerEmail: cleanEmail,
         customerPhone: '+91 98803 71756',
-        travelDate: '2026-10-15',
+        travelDate: '15/10/2026',
         travelersAdults: 2,
         travelersChildren: 1,
         totalPrice: 168000,
@@ -404,9 +405,10 @@ export class LeadEmailService {
         message: `Test holiday lead alert dispatched successfully to ${cleanEmail}!`,
       };
     } else {
+      const sampleInqId = generateInquiryId('visa');
       const sampleVisa: VisaApplication = {
-        id: `test-visa-${Math.floor(1000 + Math.random() * 9000)}`,
-        referenceNumber: `VISA-TEST-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        id: sampleInqId,
+        referenceNumber: sampleInqId,
         visaId: 'visa-uae-30',
         country: 'United Arab Emirates',
         visaType: '30 Days Tourist eVisa',
@@ -415,7 +417,7 @@ export class LeadEmailService {
         applicantPhone: '+91 98803 71756',
         passportNumber: 'Z1234567',
         nationality: 'India',
-        travelDate: '2026-10-20',
+        travelDate: '20/10/2026',
         expressProcessing: true,
         totalAmount: 8499,
         uploadedDocuments: ['Passport Copy', 'Passport Photo', 'Return Flight Ticket'],
@@ -475,13 +477,13 @@ export class LeadEmailService {
         <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-bottom: 8px;">Customer Contact Information</div>
         <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${booking.customerName}</div>
         <div style="font-size: 14px; color: #334155; margin-top: 4px;">📞 <strong>Phone:</strong> <a href="tel:${booking.customerPhone}" style="color: #0284c7; text-decoration: none;">${booking.customerPhone}</a></div>
-        <div style="font-size: 14px; color: #334155; margin-top: 4px;">✉️ <strong>Email:</strong> <a href="mailto:${booking.customerEmail}" style="color: #0284c7; text-decoration: none;">${booking.customerEmail}</a></div>
+        <div style="font-size: 14px; color: #334155; margin-top: 4px;">✉️ <strong>Email:</strong> ${booking.customerEmail ? `<a href="mailto:${booking.customerEmail}" style="color: #0284c7; text-decoration: none;">${booking.customerEmail}</a>` : '<span style="color: #94a3b8; font-style: italic;">Not provided</span>'}</div>
       </div>
 
       <!-- Lead Details Table -->
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
         <tr style="border-bottom: 1px solid #f1f5f9;">
-          <td style="padding: 10px 0; color: #64748b; font-weight: 600;">Inquiry Reference</td>
+          <td style="padding: 10px 0; color: #64748b; font-weight: 600;">Inquiry ID</td>
           <td style="padding: 10px 0; font-weight: 700; color: #0f172a; text-align: right;">${booking.id}</td>
         </tr>
         <tr style="border-bottom: 1px solid #f1f5f9;">
@@ -490,7 +492,7 @@ export class LeadEmailService {
         </tr>
         <tr style="border-bottom: 1px solid #f1f5f9;">
           <td style="padding: 10px 0; color: #64748b; font-weight: 600;">Travel Date</td>
-          <td style="padding: 10px 0; font-weight: 600; color: #0f172a; text-align: right;">${booking.travelDate}</td>
+          <td style="padding: 10px 0; font-weight: 600; color: #0f172a; text-align: right;">${formatDateDDMMYYYY(booking.travelDate)}</td>
         </tr>
         <tr style="border-bottom: 1px solid #f1f5f9;">
           <td style="padding: 10px 0; color: #64748b; font-weight: 600;">Travelers</td>
@@ -529,7 +531,7 @@ export class LeadEmailService {
   public generateVisaEmailHtml(app: VisaApplication): string {
     const cleanPhone = app.applicantPhone.replace(/[^0-9]/g, '');
     const whatsAppUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
-      `Hello ${app.applicantName}, regarding your ${app.country} (${app.visaType}) visa enquiry [Ref: ${app.referenceNumber}] with TripMyTour, our visa officer is ready to assist you.`
+      `Hello ${app.applicantName}, regarding your ${app.country} (${app.visaType}) visa inquiry [ID: ${app.referenceNumber || app.id}] with TripMyTour, our visa officer is ready to assist you.`
     )}`;
 
     return `
@@ -554,13 +556,13 @@ export class LeadEmailService {
         <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-bottom: 8px;">Applicant Details</div>
         <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${app.applicantName}</div>
         <div style="font-size: 14px; color: #334155; margin-top: 4px;">📞 <strong>Phone:</strong> <a href="tel:${app.applicantPhone}" style="color: #059669; text-decoration: none;">${app.applicantPhone}</a></div>
-        <div style="font-size: 14px; color: #334155; margin-top: 4px;">✉️ <strong>Email:</strong> <a href="mailto:${app.applicantEmail}" style="color: #059669; text-decoration: none;">${app.applicantEmail}</a></div>
+        <div style="font-size: 14px; color: #334155; margin-top: 4px;">✉️ <strong>Email:</strong> ${app.applicantEmail ? `<a href="mailto:${app.applicantEmail}" style="color: #059669; text-decoration: none;">${app.applicantEmail}</a>` : '<span style="color: #94a3b8; font-style: italic;">Not provided</span>'}</div>
       </div>
 
       <!-- Lead Details Table -->
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
         <tr style="border-bottom: 1px solid #f1f5f9;">
-          <td style="padding: 10px 0; color: #64748b; font-weight: 600;">Reference Number</td>
+          <td style="padding: 10px 0; color: #64748b; font-weight: 600;">Inquiry ID</td>
           <td style="padding: 10px 0; font-weight: 700; color: #0f172a; text-align: right;">${app.referenceNumber || app.id}</td>
         </tr>
         <tr style="border-bottom: 1px solid #f1f5f9;">
@@ -573,7 +575,7 @@ export class LeadEmailService {
         </tr>
         <tr style="border-bottom: 1px solid #f1f5f9;">
           <td style="padding: 10px 0; color: #64748b; font-weight: 600;">Travel Date</td>
-          <td style="padding: 10px 0; font-weight: 600; color: #0f172a; text-align: right;">${app.travelDate}</td>
+          <td style="padding: 10px 0; font-weight: 600; color: #0f172a; text-align: right;">${formatDateDDMMYYYY(app.travelDate)}</td>
         </tr>
         <tr style="border-bottom: 1px solid #f1f5f9;">
           <td style="padding: 10px 0; color: #64748b; font-weight: 600;">Processing Tier</td>

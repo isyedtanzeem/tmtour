@@ -187,13 +187,99 @@ export function getCustomVisaWhatsAppUrl(details: {
 }
 
 /**
+ * Generates formatted today date in compact DDMMYYYY (e.g. 19092026)
+ */
+export function getTodayDDMMYYYY(): string {
+  const now = new Date();
+  const d = String(now.getDate()).padStart(2, '0');
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const y = now.getFullYear();
+  return `${d}${m}${y}`;
+}
+
+/**
+ * Generates inquiry ID in the required formats:
+ * - Holiday: tmt-holiday-{date+inquiry number} (e.g. tmt-holiday-19092026-1001)
+ * - Visa: tmt-visa-{date+inquiry number} (e.g. tmt-visa-19092026-1001)
+ */
+export function generateInquiryId(type: 'holiday' | 'visa'): string {
+  const dateStr = getTodayDDMMYYYY();
+  const inqNum = Math.floor(1000 + Math.random() * 9000);
+  return `tmt-${type}-${dateStr}-${inqNum}`;
+}
+
+/**
+ * Formats any date (ISO string, YYYY-MM-DD, timestamp, or Date instance) into DD/MM/YYYY.
+ * If the date is already in DD/MM/YYYY or is freeform text (e.g. "Flexible"), preserves gracefully.
+ */
+export function formatDateDDMMYYYY(val: string | number | Date | null | undefined): string {
+  if (!val) return '';
+
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return '';
+
+    // If it's already in DD/MM/YYYY format
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+      return trimmed;
+    }
+    // If it's in DD-MM-YYYY format, normalize to DD/MM/YYYY
+    if (/^\d{2}-\d{2}-\d{4}$/.test(trimmed)) {
+      return trimmed.replace(/-/g, '/');
+    }
+    // If it's 8 digits like 19092026
+    if (/^\d{8}$/.test(trimmed)) {
+      return `${trimmed.slice(0, 2)}/${trimmed.slice(2, 4)}/${trimmed.slice(4)}`;
+    }
+    // If it's pure YYYY-MM-DD
+    const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (ymdMatch) {
+      return `${ymdMatch[3]}/${ymdMatch[2]}/${ymdMatch[1]}`;
+    }
+    // If it's an ISO timestamp like 2026-09-21T18:30:00.000Z
+    try {
+      const parsed = new Date(trimmed);
+      if (!isNaN(parsed.getTime())) {
+        const d = String(parsed.getDate()).padStart(2, '0');
+        const m = String(parsed.getMonth() + 1).padStart(2, '0');
+        const y = parsed.getFullYear();
+        return `${d}/${m}/${y}`;
+      }
+    } catch {
+      // ignore
+    }
+    // If it's descriptive text like "Flexible / To be confirmed", return as is
+    return trimmed;
+  }
+
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    const d = String(val.getDate()).padStart(2, '0');
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const y = val.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+
+  if (typeof val === 'number') {
+    const parsed = new Date(val);
+    if (!isNaN(parsed.getTime())) {
+      const d = String(parsed.getDate()).padStart(2, '0');
+      const m = String(parsed.getMonth() + 1).padStart(2, '0');
+      const y = parsed.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
+  }
+
+  return String(val);
+}
+
+/**
  * Generates direct WhatsApp follow-up link for an existing visa enquiry reference
  */
 export function getVisaFollowUpWhatsAppUrl(referenceNumber: string, country: string, visaType: string): string {
   const lines = [
     `Hello ${BUSINESS_INFO.name}, following up on my Visa Enquiry:`,
     ``,
-    `📋 Reference ID: *${referenceNumber}*`,
+    `📋 Inquiry ID: *${referenceNumber}*`,
     `🛂 Visa: *${country} - ${visaType}*`,
     ``,
     `Please share the status and next steps for document submission. Thank you!`,
