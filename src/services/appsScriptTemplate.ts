@@ -548,7 +548,6 @@ function sendVisaLeadNotification(recipients, data, sheetUrl) {
       + "    </table>"
       + "  </div>"
       + "  <div style='background:#f1f5f9;padding:16px 24px;text-align:center;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0;'>"
-      + (sheetUrl ? "    <div style='margin-bottom:8px;'><a href='" + sheetUrl + "' style='color:#059669;font-weight:600;text-decoration:none;'>📊 View Applications in Google Sheets →</a></div>" : "")
       + "    <div>Generated securely by " + COMPANY_NAME + " Visa Desk • " + new Date().toLocaleString() + "</div>"
       + "  </div>"
       + "</div>";
@@ -564,8 +563,7 @@ function sendVisaLeadNotification(recipients, data, sheetUrl) {
       + "Travel Date: " + travelDate + "\\n"
       + "Mode: " + isExpress + "\\n"
       + "Total Fee: " + totalAmount + "\\n\\n"
-      + (waUrl ? "WhatsApp Applicant: " + waUrl + "\\n\\n" : "")
-      + "Google Sheet: " + (sheetUrl || "N/A");
+      + (waUrl ? "WhatsApp Applicant: " + waUrl : "");
 
     MailApp.sendEmail({
       to: recipients.join(","),
