@@ -580,7 +580,7 @@ export class LeadEmailService {
         <tr style="border-bottom: 1px solid #f1f5f9;">
           <td style="padding: 10px 0; color: #64748b; font-weight: 600;">Processing Tier</td>
           <td style="padding: 10px 0; font-weight: 700; text-align: right; color: ${app.expressProcessing ? '#d97706' : '#64748b'};">
-            ${app.expressProcessing ? '⚡ Express Processing (+₹1,500)' : 'Standard Processing'}
+            ${app.expressProcessing ? '⚡ Express Fast-Track Processing' : 'Standard Processing'}
           </td>
         </tr>
         <tr style="border-bottom: 1px solid #f1f5f9;">

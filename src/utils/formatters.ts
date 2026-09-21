@@ -165,6 +165,7 @@ export function getCustomVisaWhatsAppUrl(details: {
   travelDate?: string;
   applicants?: number;
   express?: boolean;
+  expressProcessingTime?: string;
   notes?: string;
 }): string {
   const lines = [
@@ -176,7 +177,9 @@ export function getCustomVisaWhatsAppUrl(details: {
     details.phone ? `📞 Contact: ${details.phone}` : '',
     details.travelDate ? `📅 Travel Date / Month: ${details.travelDate}` : '',
     details.applicants ? `👥 Travellers: ${details.applicants}` : '',
-    details.express ? `⚡ Express 24-48h Processing Requested` : '',
+    details.express
+      ? `⚡ Express Fast-Track Requested (${details.expressProcessingTime || '24-48 hours'})`
+      : '',
     details.notes ? `💬 Query/Notes: ${details.notes}` : '',
     ``,
     `Please assist me with document verification and embassy procedure.`,

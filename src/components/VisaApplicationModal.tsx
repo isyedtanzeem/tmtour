@@ -101,7 +101,9 @@ export const VisaApplicationModal: React.FC<VisaApplicationModalProps> = ({
       uploadedDocuments: visa.documentsRequired,
       status: 'Under Review',
       submittedAt: new Date().toISOString(),
-      notes: notes.trim() ? `[${travellersCount} Pax] ${notes.trim()}` : `[${travellersCount} Pax] Visa Enquiry submitted`,
+      notes: notes.trim()
+        ? `[${travellersCount} Pax]${expressProcessing ? ` [Express: ${visa.expressProcessingTime || 'Expedited'}]` : ''} ${notes.trim()}`
+        : `[${travellersCount} Pax] Visa Enquiry submitted${expressProcessing ? ` [Express: ${visa.expressProcessingTime || 'Expedited'}]` : ''}`,
     };
 
     try {
@@ -132,6 +134,7 @@ export const VisaApplicationModal: React.FC<VisaApplicationModalProps> = ({
     travelDate: travelDate.trim() || undefined,
     applicants: parseInt(travellersCount, 10) || 1,
     express: expressProcessing,
+    expressProcessingTime: visa.expressProcessingTime,
     notes: notes.trim() || undefined,
   });
 
@@ -431,17 +434,26 @@ export const VisaApplicationModal: React.FC<VisaApplicationModalProps> = ({
 
                   {visa.expressAvailable && (
                     <div className="flex items-center">
-                      <label className="flex items-center gap-2 p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl text-xs text-amber-900 cursor-pointer w-full hover:bg-amber-100/50 transition-colors">
+                      <label className="flex items-center gap-2.5 p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs text-amber-900 cursor-pointer w-full hover:bg-amber-100/50 transition-colors">
                         <input
                           type="checkbox"
                           checked={expressProcessing}
                           onChange={(e) => setExpressProcessing(e.target.checked)}
-                          className="rounded text-amber-600 focus:ring-amber-500"
+                          className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
                         />
-                        <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <div>
-                          <span className="font-bold block">Need Express 24-48h?</span>
-                          <span className="text-[10px] text-amber-700">+{formatCurrency(visa.expressFee)} / pax</span>
+                        <Zap className="w-4 h-4 text-amber-600 shrink-0" />
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold block text-slate-900">
+                              Need Express Processing ({visa.expressProcessingTime || '24-48 hours'})?
+                            </span>
+                            <span className="text-[11px] font-bold text-amber-800 shrink-0">
+                              +{formatCurrency(visa.expressFee)} / pax
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-amber-700 block mt-0.5">
+                            Priority consulate handling • {visa.expressProcessingTime || 'Expedited turnaround'}
+                          </span>
                         </div>
                       </label>
                     </div>

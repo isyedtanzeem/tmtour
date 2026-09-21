@@ -125,9 +125,12 @@ export const VisaServicesList: React.FC<VisaServicesListProps> = ({
                 </div>
 
                 {visa.expressAvailable && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  <span
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200"
+                    title={`Express turnaround: ${visa.expressProcessingTime || '24-48 hours'}`}
+                  >
                     <Zap className="w-3 h-3 text-amber-500" />
-                    <span>Express</span>
+                    <span>{visa.expressProcessingTime || 'Express Fast-Track'}</span>
                   </span>
                 )}
               </div>

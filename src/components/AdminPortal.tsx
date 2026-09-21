@@ -36,7 +36,8 @@ import {
   Eye,
   ArrowLeft,
   Globe,
-  HardDrive
+  HardDrive,
+  Zap
 } from 'lucide-react';
 import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig, ItineraryDay, AdminUser } from '../types';
 import { sheetsService } from '../services/sheetsService';
@@ -930,9 +931,14 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                       </td>
                       <td className="py-3.5 px-4">
                         {v.expressAvailable ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            Yes (+{formatCurrency(v.expressFee)})
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 inline-block w-fit">
+                              +{formatCurrency(v.expressFee)}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {v.expressProcessingTime || '24-48 Hours'}
+                            </span>
+                          </div>
                         ) : (
                           <span className="text-slate-400 text-[11px]">No</span>
                         )}
@@ -2247,7 +2253,10 @@ const VisaFormModal: React.FC<VisaFormModalProps> = ({
   const [embassyFee, setEmbassyFee] = useState(visa?.embassyFee || 75);
   const [serviceFee, setServiceFee] = useState(visa?.serviceFee || 25);
   const [expressAvailable, setExpressAvailable] = useState(visa?.expressAvailable || false);
-  const [expressFee, setExpressFee] = useState(visa?.expressFee || 35);
+  const [expressFee, setExpressFee] = useState(visa?.expressFee || 2500);
+  const [expressProcessingTime, setExpressProcessingTime] = useState(
+    visa?.expressProcessingTime || '24-48 hours expedited service'
+  );
   const [description, setDescription] = useState(visa?.description || '');
   const [docsText, setDocsText] = useState(
     visa?.documentsRequired.join('\n') ||
@@ -2272,7 +2281,7 @@ const VisaFormModal: React.FC<VisaFormModalProps> = ({
       totalFee: Number(embassyFee) + Number(serviceFee),
       expressAvailable,
       expressFee: Number(expressFee),
-      expressProcessingTime: '24 Hours Express',
+      expressProcessingTime: expressProcessingTime.trim() || '24-48 hours expedited service',
       documentsRequired: docsText.split('\n').map((s) => s.trim()).filter(Boolean),
       popular: true,
       description: description || `Official visa assistance for travel to ${country}. Fast electronic processing.`,
@@ -2395,28 +2404,89 @@ const VisaFormModal: React.FC<VisaFormModalProps> = ({
             </div>
           </div>
 
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-            <div>
-              <span className="font-bold text-slate-800">Express Processing Available?</span>
-              <span className="block text-[11px] text-slate-500">24-48 hours expedited service</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={expressAvailable}
-                onChange={(e) => setExpressAvailable(e.target.checked)}
-                className="w-4 h-4 text-emerald-600 rounded"
-              />
-              {expressAvailable && (
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-700 shrink-0">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-slate-900 block text-xs">Express Processing Available?</span>
+                  <span className="text-[11px] text-slate-500">
+                    Enable country-specific expedited turnaround (hours or days)
+                  </span>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
                 <input
-                  type="number"
-                  placeholder="Fee ₹"
-                  value={expressFee}
-                  onChange={(e) => setExpressFee(Number(e.target.value))}
-                  className="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-xs"
+                  type="checkbox"
+                  checked={expressAvailable}
+                  onChange={(e) => setExpressAvailable(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
                 />
-              )}
+              </label>
             </div>
+
+            {expressAvailable && (
+              <div className="pt-3 border-t border-slate-200 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-[11px]">
+                      Expedited Turnaround / Timeline *
+                    </label>
+                    <input
+                      type="text"
+                      required={expressAvailable}
+                      placeholder="e.g. 4-6 Hours, 12 Hours, 24 Hours, 24-48 Hours"
+                      value={expressProcessingTime}
+                      onChange={(e) => setExpressProcessingTime(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
+                      {['4-6 Hours', '12 Hours', '24 Hours', '24-48 Hours', '2-3 Days'].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setExpressProcessingTime(`${preset} expedited service`)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer border ${
+                            expressProcessingTime.includes(preset)
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-[11px]">
+                      Additional Express Fee (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      required={expressAvailable}
+                      placeholder="e.g. 2500"
+                      value={expressFee}
+                      onChange={(e) => setExpressFee(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <span className="text-[10px] text-slate-500 block mt-1 font-medium">
+                      All-inclusive with Express: ₹{(Number(embassyFee) + Number(serviceFee) + Number(expressFee)).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-amber-50/70 border border-amber-200/70 rounded-xl text-[11px] text-amber-900 leading-relaxed flex items-start gap-2">
+                  <span className="shrink-0 text-amber-700 font-bold">💡 Country Tip:</span>
+                  <span>
+                    Destinations like UAE or Singapore can be approved in <strong>4-6 hours</strong> or <strong>24 hours</strong>. You can freely customize the exact timeframe and fee for each country.
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
