@@ -205,12 +205,24 @@ export class SheetsService {
 
       const bookRaw = localStorage.getItem(STORAGE_KEYS.BOOKINGS);
       if (bookRaw) {
-        this.bookings = JSON.parse(bookRaw);
+        const parsed = JSON.parse(bookRaw);
+        if (Array.isArray(parsed)) {
+          this.bookings = parsed.map((b: any) => ({
+            ...b,
+            customerPhone: String(b.customerPhone || '').replace(/^'/, '').trim(),
+          }));
+        }
       }
 
       const appRaw = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
       if (appRaw) {
-        this.applications = JSON.parse(appRaw);
+        const parsed = JSON.parse(appRaw);
+        if (Array.isArray(parsed)) {
+          this.applications = parsed.map((a: any) => ({
+            ...a,
+            applicantPhone: String(a.applicantPhone || '').replace(/^'/, '').trim(),
+          }));
+        }
       }
 
       const staffRaw = localStorage.getItem(STORAGE_KEYS.STAFF);
@@ -648,12 +660,44 @@ export class SheetsService {
       hasChanges = true;
     }
     if (Array.isArray(data.bookings)) {
-      this.bookings = data.bookings;
+      this.bookings = data.bookings.map((b: any) => {
+        let phone = String(b.customerPhone || '').trim();
+        // If Google Sheets stored "#ERROR!" or "#VALUE!", preserve known local phone if available
+        if (phone === '#ERROR!' || phone === '#VALUE!' || phone.startsWith('#') || !phone) {
+          const cached = this.bookings.find((prev) => prev.id === b.id);
+          if (cached && cached.customerPhone && !cached.customerPhone.startsWith('#')) {
+            phone = cached.customerPhone;
+          }
+        }
+        // Strip leading apostrophe prefix if present from Sheets
+        if (phone.startsWith("'")) {
+          phone = phone.slice(1).trim();
+        }
+        return {
+          ...b,
+          customerPhone: phone,
+        };
+      });
       localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(this.bookings));
       hasChanges = true;
     }
     if (Array.isArray(data.applications)) {
-      this.applications = data.applications;
+      this.applications = data.applications.map((a: any) => {
+        let phone = String(a.applicantPhone || '').trim();
+        if (phone === '#ERROR!' || phone === '#VALUE!' || phone.startsWith('#') || !phone) {
+          const cached = this.applications.find((prev) => prev.id === a.id);
+          if (cached && cached.applicantPhone && !cached.applicantPhone.startsWith('#')) {
+            phone = cached.applicantPhone;
+          }
+        }
+        if (phone.startsWith("'")) {
+          phone = phone.slice(1).trim();
+        }
+        return {
+          ...a,
+          applicantPhone: phone,
+        };
+      });
       localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(this.applications));
       hasChanges = true;
     }
@@ -922,17 +966,35 @@ export class SheetsService {
   }
 
   public async createBooking(booking: BookingInquiry): Promise<boolean> {
-    this.bookings.unshift(booking);
+    // Keep clean phone for local UI, email, and WhatsApp
+    const cleanPhone = (booking.customerPhone || '').replace(/^'/, '').trim();
+    const localBooking: BookingInquiry = {
+      ...booking,
+      customerPhone: cleanPhone,
+    };
+
+    this.bookings.unshift(localBooking);
     localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(this.bookings));
     this.notify();
 
     // Trigger email notification to team
-    leadEmailService.dispatchHolidayLeadAlert(booking);
+    leadEmailService.dispatchHolidayLeadAlert(localBooking);
 
-    // Sync to remote Google Sheet if connected
+    // Sync to remote Google Sheet:
+    // IMPORTANT: Any phone number starting with "+" (e.g. "+91 98803 71756") or "0"
+    // MUST be prepended with a single apostrophe (') when sent to Google Sheets.
+    // In spreadsheet formulas, a leading "+" causes Google Sheets to evaluate it as a formula,
+    // resulting in "#ERROR! (Formula parse error)". The leading apostrophe instructs Google Sheets
+    // to store and display the value as plain text, eliminating the "#ERROR!".
+    const sheetPhone = cleanPhone ? (cleanPhone.startsWith("'") ? cleanPhone : `'${cleanPhone}`) : '';
+    const sheetBooking = {
+      ...localBooking,
+      customerPhone: sheetPhone,
+    };
+
     const notificationEmails = leadEmailService.getActiveRecipientsFor('holiday');
     this.executeSheetsAction('createBooking', {
-      data: booking,
+      data: sheetBooking,
       notificationEmails,
     }).catch((err) => console.warn('Booking sync notice:', err));
 
@@ -954,6 +1016,17 @@ export class SheetsService {
     return false;
   }
 
+  public async deleteBooking(id: string): Promise<boolean> {
+    this.bookings = this.bookings.filter((b) => b.id !== id);
+    localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(this.bookings));
+    this.notify();
+
+    this.executeSheetsAction('deleteBooking', { id }).catch((err) =>
+      console.warn('Booking delete notice:', err)
+    );
+    return true;
+  }
+
   // --------------------------------------------------------------------------
   // VISA APPLICATIONS
   // --------------------------------------------------------------------------
@@ -963,16 +1036,29 @@ export class SheetsService {
   }
 
   public async createVisaApplication(app: VisaApplication): Promise<boolean> {
-    this.applications.unshift(app);
+    const cleanPhone = (app.applicantPhone || '').replace(/^'/, '').trim();
+    const localApp: VisaApplication = {
+      ...app,
+      applicantPhone: cleanPhone,
+    };
+
+    this.applications.unshift(localApp);
     localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(this.applications));
     this.notify();
 
     // Trigger email notification
-    leadEmailService.dispatchVisaLeadAlert(app);
+    leadEmailService.dispatchVisaLeadAlert(localApp);
+
+    // Escape phone with apostrophe for Google Sheets formula protection
+    const sheetPhone = cleanPhone ? (cleanPhone.startsWith("'") ? cleanPhone : `'${cleanPhone}`) : '';
+    const sheetApp = {
+      ...localApp,
+      applicantPhone: sheetPhone,
+    };
 
     const notificationEmails = leadEmailService.getActiveRecipientsFor('visa');
     this.executeSheetsAction('createVisaApplication', {
-      data: app,
+      data: sheetApp,
       notificationEmails,
     }).catch((err) => console.warn('Visa app sync notice:', err));
 
@@ -992,6 +1078,45 @@ export class SheetsService {
       return true;
     }
     return false;
+  }
+
+  public async deleteApplication(id: string): Promise<boolean> {
+    this.applications = this.applications.filter((a) => a.id !== id);
+    localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(this.applications));
+    this.notify();
+
+    this.executeSheetsAction('deleteApplication', { id }).catch((err) =>
+      console.warn('Visa app delete notice:', err)
+    );
+    return true;
+  }
+
+  /**
+   * Triggers the remote Google Apps Script to scan existing rows in Google Sheets,
+   * repair any cells showing '#ERROR!' by recovering the phone number from the cell formula,
+   * and permanently set the phone columns to Plain Text format.
+   */
+  public async repairPhoneErrorsInSheets(): Promise<{ success: boolean; repairedCount?: number; message?: string }> {
+    try {
+      const res = await this.executeSheetsAction('repairPhoneErrors');
+      if (res.success) {
+        await this.syncWithGoogleSheets();
+        return {
+          success: true,
+          repairedCount: (res as any).repairedCount || 0,
+          message: res.message || 'Successfully repaired phone number cells in Google Sheets!',
+        };
+      }
+      return {
+        success: false,
+        message: res.error || 'Failed to repair phone numbers in Google Sheets.',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Error executing repair in Google Sheets.',
+      };
+    }
   }
 
   // --------------------------------------------------------------------------

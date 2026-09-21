@@ -143,6 +143,9 @@ function handleRequest(e) {
     
     // ----------------- GET ALL DATA -----------------
     else if (action === "getAllData" || action === "getData") {
+      // Auto-repair phone #ERROR! formula cells in Google Sheets if any exist
+      repairSheetPhoneErrors(ss);
+      
       response.packages = getSheetRecords(ss.getSheetByName(SHEET_PACKAGES));
       response.visas = getSheetRecords(ss.getSheetByName(SHEET_VISAS));
       response.bookings = getSheetRecords(ss.getSheetByName(SHEET_BOOKINGS));
@@ -340,6 +343,27 @@ function handleRequest(e) {
     }
     else if (action === "updateApplicationStatus") {
       response.updated = updateRecordField(ss.getSheetByName(SHEET_APPLICATIONS), postData.id, "status", postData.status);
+      response.applications = getSheetRecords(ss.getSheetByName(SHEET_APPLICATIONS));
+    }
+    
+    // ----------------- DELETE INQUIRIES -----------------
+    else if (action === "deleteBooking") {
+      var idToDeleteBooking = postData.id || params.id;
+      response.deleted = deleteRecordById(ss.getSheetByName(SHEET_BOOKINGS), idToDeleteBooking);
+      response.bookings = getSheetRecords(ss.getSheetByName(SHEET_BOOKINGS));
+    }
+    else if (action === "deleteApplication" || action === "deleteVisaApplication") {
+      var idToDeleteApp = postData.id || params.id;
+      response.deleted = deleteRecordById(ss.getSheetByName(SHEET_APPLICATIONS), idToDeleteApp);
+      response.applications = getSheetRecords(ss.getSheetByName(SHEET_APPLICATIONS));
+    }
+    
+    // ----------------- REPAIR PHONE #ERROR! FORMULA CELLS -----------------
+    else if (action === "repairPhoneErrors" || action === "fixPhoneErrors") {
+      var fixedCount = repairSheetPhoneErrors(ss);
+      response.repairedCount = fixedCount;
+      response.message = "Successfully repaired " + fixedCount + " phone formula error(s) in Google Sheets!";
+      response.bookings = getSheetRecords(ss.getSheetByName(SHEET_BOOKINGS));
       response.applications = getSheetRecords(ss.getSheetByName(SHEET_APPLICATIONS));
     }
     
@@ -719,6 +743,23 @@ function getSheetRecords(sheet) {
         }
       }
       
+      // Clean phone fields: strip leading apostrophe or auto-heal formula parse errors
+      if ((key === "customerPhone" || key === "applicantPhone") && typeof val === "string") {
+        if (val.charAt(0) === "'") {
+          val = val.substring(1).trim();
+        } else if (val === "#ERROR!" || val === "#VALUE!" || val.indexOf("#ERROR") !== -1) {
+          try {
+            var cellFormula = sheet.getRange(r + 1, c + 1).getFormula();
+            if (cellFormula) {
+              var recovered = cellFormula.replace(/^=/, "").trim();
+              val = recovered;
+              // Auto-heal the cell permanently in Google Sheets
+              sheet.getRange(r + 1, c + 1).setNumberFormat("@").setValue("'" + recovered);
+            }
+          } catch (e) {}
+        }
+      }
+      
       obj[key] = val;
       if (val !== "" && val !== null && val !== undefined) hasData = true;
     }
@@ -758,6 +799,15 @@ function upsertRecord(sheet, record) {
     if (typeof v === "object" && v !== null) {
       v = JSON.stringify(v);
     }
+    // Avoid formula parse error (#ERROR!) in Google Sheets when phone starts with '+'
+    if ((h === "customerPhone" || h === "applicantPhone") && typeof v === "string") {
+      var pStr = v.trim();
+      if (pStr && pStr.charAt(0) !== "'") {
+        v = "'" + pStr;
+      }
+    } else if (typeof v === "string" && v.charAt(0) === "+") {
+      v = "'" + v;
+    }
     rowValues.push(v);
   }
   
@@ -783,6 +833,14 @@ function appendRecord(sheet, record) {
     if (v === undefined) v = "";
     if (typeof v === "object" && v !== null) {
       v = JSON.stringify(v);
+    }
+    if ((h === "customerPhone" || h === "applicantPhone") && typeof v === "string") {
+      var phoneTrim = v.trim();
+      if (phoneTrim && phoneTrim.charAt(0) !== "'") {
+        v = "'" + phoneTrim;
+      }
+    } else if (typeof v === "string" && v.charAt(0) === "+") {
+      v = "'" + v;
     }
     rowValues.push(v);
   }
@@ -885,6 +943,26 @@ function ensureTabsExist(ss) {
     }
   }
 
+  // Ensure phone columns in Bookings and Applications are strictly formatted as Plain Text (@)
+  try {
+    var bSheet = ss.getSheetByName(SHEET_BOOKINGS);
+    if (bSheet) {
+      var bHeaders = bSheet.getRange(1, 1, 1, bSheet.getLastColumn()).getValues()[0];
+      var bPhoneIdx = bHeaders.indexOf("customerPhone") + 1;
+      if (bPhoneIdx > 0 && bSheet.getMaxRows() > 1) {
+        bSheet.getRange(2, bPhoneIdx, Math.max(bSheet.getMaxRows() - 1, 50), 1).setNumberFormat("@");
+      }
+    }
+    var aSheet = ss.getSheetByName(SHEET_APPLICATIONS);
+    if (aSheet) {
+      var aHeaders = aSheet.getRange(1, 1, 1, aSheet.getLastColumn()).getValues()[0];
+      var aPhoneIdx = aHeaders.indexOf("applicantPhone") + 1;
+      if (aPhoneIdx > 0 && aSheet.getMaxRows() > 1) {
+        aSheet.getRange(2, aPhoneIdx, Math.max(aSheet.getMaxRows() - 1, 50), 1).setNumberFormat("@");
+      }
+    }
+  } catch (fmtErr) {}
+
   // Seed default super admin in Staff_Users if empty
   var staffSheet = ss.getSheetByName(SHEET_STAFF);
   if (staffSheet && staffSheet.getLastRow() <= 1) {
@@ -925,8 +1003,56 @@ function ensureTabsExist(ss) {
   }
 }
 
+function repairSheetPhoneErrors(ss) {
+  if (!ss) ss = SpreadsheetApp.getActiveSpreadsheet();
+  var fixedCount = 0;
+  var targets = [
+    { name: SHEET_BOOKINGS, field: "customerPhone" },
+    { name: SHEET_APPLICATIONS, field: "applicantPhone" }
+  ];
+  
+  for (var t = 0; t < targets.length; t++) {
+    var target = targets[t];
+    var sheet = ss.getSheetByName(target.name);
+    if (!sheet) continue;
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) continue;
+    
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var colIdx = headers.indexOf(target.field) + 1;
+    if (colIdx <= 0) continue;
+    
+    // Set column format to plain text
+    try {
+      sheet.getRange(2, colIdx, lastRow - 1, 1).setNumberFormat("@");
+    } catch (e) {}
+    
+    var range = sheet.getRange(2, colIdx, lastRow - 1, 1);
+    var formulas = range.getFormulas();
+    var values = range.getValues();
+    
+    for (var r = 0; r < values.length; r++) {
+      var val = String(values[r][0] || "");
+      var formula = String(formulas[r][0] || "");
+      
+      // If cell errored or formula starts with +
+      if (val === "#ERROR!" || val === "#VALUE!" || val.indexOf("#ERROR") !== -1 || formula.charAt(0) === "+") {
+        var rawPhone = formula || val;
+        if (rawPhone.charAt(0) === "=") rawPhone = rawPhone.substring(1);
+        var cleanPhone = rawPhone.trim();
+        if (cleanPhone) {
+          range.getCell(r + 1, 1).setValue("'" + cleanPhone);
+          fixedCount++;
+        }
+      }
+    }
+  }
+  return fixedCount;
+}
+
 function initializeDatabase() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   ensureTabsExist(ss);
+  repairSheetPhoneErrors(ss);
 }
 `;

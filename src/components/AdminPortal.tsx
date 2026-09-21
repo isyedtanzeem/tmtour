@@ -436,6 +436,40 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
     onRefresh();
   };
 
+  const [isRepairingPhones, setIsRepairingPhones] = useState(false);
+  const [repairStatusMessage, setRepairStatusMessage] = useState<string | null>(null);
+
+  const handleRepairPhones = async () => {
+    setIsRepairingPhones(true);
+    setRepairStatusMessage(null);
+    try {
+      const res = await sheetsService.repairPhoneErrorsInSheets();
+      if (res.success) {
+        setRepairStatusMessage(res.message || 'Phone cells in Google Sheets successfully repaired!');
+        onRefresh();
+      } else {
+        setRepairStatusMessage(res.message || 'Could not complete auto-repair.');
+      }
+    } catch (err: any) {
+      setRepairStatusMessage(err?.message || 'Error triggering repair.');
+    } finally {
+      setIsRepairingPhones(false);
+      setTimeout(() => setRepairStatusMessage(null), 6000);
+    }
+  };
+
+  const handleDeleteBooking = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete the booking inquiry for "${name}"?`)) return;
+    await sheetsService.deleteBooking(id);
+    onRefresh();
+  };
+
+  const handleDeleteApplication = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete the visa application for "${name}"?`)) return;
+    await sheetsService.deleteApplication(id);
+    onRefresh();
+  };
+
   const handleCopyDirectUrl = () => {
     const url = `${window.location.origin}/?admin=true`;
     navigator.clipboard.writeText(url);
@@ -984,6 +1018,42 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
             )}
           </div>
 
+          {/* Google Sheets Phone Error Alert & Auto-Repair Banner */}
+          <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2 rounded-xl bg-amber-500 text-white shrink-0 mt-0.5 sm:mt-0">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                  <span>Google Sheets Phone Number Formatting</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    Formula Protection Enabled
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                  International phone numbers (e.g. <code className="font-mono text-amber-900">+91 98803 71756</code>) are automatically protected with plain-text apostrophes so Google Sheets does not mistake them for math formulas (<code className="font-mono text-rose-600">#ERROR!</code>).
+                </p>
+                {repairStatusMessage && (
+                  <p className="text-xs font-bold text-emerald-700 mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{repairStatusMessage}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRepairPhones}
+              disabled={isRepairingPhones}
+              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold shrink-0 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRepairingPhones ? 'animate-spin' : ''}`} />
+              <span>{isRepairingPhones ? 'Fixing in Sheets...' : 'Repair Phone Errors in Sheets'}</span>
+            </button>
+          </div>
+
           {/* Section: Visa Applications */}
           <div>
             <div className="flex items-center justify-between mb-4">
@@ -1014,6 +1084,7 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                         <th className="py-3.5 px-4">Travel Date (DD/MM/YYYY)</th>
                         <th className="py-3.5 px-4">Amount</th>
                         <th className="py-3.5 px-4">{canManageLeadStatus ? 'Status (Click to Update)' : 'Status'}</th>
+                        {canDeleteLeads && <th className="py-3.5 px-4 text-right">Actions</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1072,6 +1143,18 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                               </span>
                             )}
                           </td>
+                          {canDeleteLeads && (
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteApplication(app.id, app.applicantName)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Delete visa application"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -1111,6 +1194,7 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                         <th className="py-3.5 px-4">Travelers</th>
                         <th className="py-3.5 px-4">Total</th>
                         <th className="py-3.5 px-4">Status</th>
+                        {canDeleteLeads && <th className="py-3.5 px-4 text-right">Actions</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1167,6 +1251,18 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                               </span>
                             )}
                           </td>
+                          {canDeleteLeads && (
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteBooking(b.id, b.customerName)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Delete booking inquiry"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -1528,6 +1624,65 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                 </div>
                 <p className="text-slate-500 text-[11px] leading-relaxed">
                   Trigger a redeploy. Your site on your custom domain will now communicate directly with Google Sheets as its live database!
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Google Sheets Phone #ERROR! Formula Prevention Guide */}
+          <div className="bg-white rounded-2xl border border-amber-200 p-6 sm:p-8 space-y-4 shadow-xs">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 rounded-xl bg-amber-500 text-white shrink-0 shadow-sm mt-0.5">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Google Sheets Mobile Number Formula Fix (<code className="text-rose-600 font-mono text-sm">#ERROR!</code>)
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed max-w-3xl">
+                    Why does Google Sheets show <strong>#ERROR! (Formula parse error)</strong> on mobile numbers? When a phone number starts with a plus sign (<code className="text-amber-900 font-mono">+91 98803 71756</code>), Google Sheets interprets the <code className="font-mono text-amber-900">+</code> as a mathematical operator (formula) and produces a parse error with a red triangle.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleRepairPhones}
+                disabled={isRepairingPhones}
+                className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRepairingPhones ? 'animate-spin' : ''}`} />
+                <span>{isRepairingPhones ? 'Repairing Cells in Sheets...' : 'Run Auto-Repair in Sheets'}</span>
+              </button>
+            </div>
+
+            {repairStatusMessage && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{repairStatusMessage}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-2">
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                <div className="font-bold text-slate-800">1. Plain-Text Formatting</div>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  The updated Apps Script script formats <code className="font-mono text-slate-700">customerPhone</code> and <code className="font-mono text-slate-700">applicantPhone</code> columns with the <code className="font-mono text-blue-600">@</code> (plain text) mask.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                <div className="font-bold text-slate-800">2. Apostrophe Prefix Protection</div>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Every lead submission automatically prefixes international numbers with a single apostrophe (<code className="font-mono text-blue-600">'+91...</code>), which tells Google Sheets to treat the value strictly as text.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                <div className="font-bold text-slate-800">3. Live Self-Healing</div>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Whenever the app syncs with Google Sheets, the updated <code className="font-mono text-blue-600">Code.gs</code> inspects existing cell formulas, extracts the real phone number, and fixes the cell permanently.
                 </p>
               </div>
             </div>
