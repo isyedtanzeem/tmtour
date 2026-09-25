@@ -37,7 +37,11 @@ import {
   ArrowLeft,
   Globe,
   HardDrive,
-  Zap
+  Zap,
+  Calendar,
+  ChevronUp,
+  ChevronDown,
+  Utensils
 } from 'lucide-react';
 import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig, ItineraryDay, AdminUser } from '../types';
 import { sheetsService } from '../services/sheetsService';
@@ -1962,6 +1966,15 @@ interface PackageFormModalProps {
   onOpenSheetsSettings?: () => void;
 }
 
+const MEAL_PRESETS = [
+  'Breakfast Included',
+  'Breakfast & Lunch',
+  'Breakfast & Dinner',
+  'Dinner Included',
+  'All Meals Included',
+  'Leisure (No Meals)',
+];
+
 const PackageFormModal: React.FC<PackageFormModalProps> = ({
   pkg,
   onClose,
@@ -1986,18 +1999,178 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
   const [inclusionsText, setInclusionsText] = useState(pkg?.inclusions.join('\n') || '4-Star Hotel Stay\nDaily Buffet Breakfast\nAirport Transfers\nGuided City Excursion');
   const [exclusionsText, setExclusionsText] = useState(pkg?.exclusions.join('\n') || 'International Flights\nVisa Fees\nPersonal Expenses');
 
+  // Manual Day-to-Day Itinerary State
+  const [itinerary, setItinerary] = useState<ItineraryDay[]>(() => {
+    if (pkg?.itinerary && Array.isArray(pkg.itinerary) && pkg.itinerary.length > 0) {
+      return pkg.itinerary.map((d, idx) => ({
+        day: d.day || idx + 1,
+        title: d.title || `Day ${idx + 1}`,
+        description: d.description || '',
+        meals: d.meals || 'Breakfast Included',
+        activities: d.activities || [],
+      }));
+    }
+    const initialCount = Number(pkg?.days) || 6;
+    return Array.from({ length: initialCount }, (_, idx) => ({
+      day: idx + 1,
+      title: idx === 0 
+        ? 'Arrival & Hotel Check-in' 
+        : idx === initialCount - 1 
+        ? 'Leisure & Airport Departure' 
+        : `Day ${idx + 1} Sightseeing & Experiences`,
+      description: idx === 0 
+        ? `Arrival at destination airport. Chauffeur transfer to ${pkg?.hotelName || 'hotel'}, check-in and evening welcome leisure.` 
+        : idx === initialCount - 1 
+        ? 'Breakfast at hotel, free time for last-minute shopping and souvenirs, followed by private airport drop-off.' 
+        : `Full-day guided excursion to landmark sightseeing spots, cultural highlights, and local viewpoints.`,
+      meals: idx === 0 ? 'Dinner Included' : idx === initialCount - 1 ? 'Breakfast' : 'Breakfast & Lunch',
+      activities: [],
+    }));
+  });
+
+  // Track expanded state for day cards
+  const [expandedDays, setExpandedDays] = useState<Record<number, boolean>>(() => {
+    const init: Record<number, boolean> = {};
+    const count = pkg?.itinerary?.length || pkg?.days || 6;
+    for (let i = 0; i < count; i++) init[i] = true;
+    return init;
+  });
+
+  const toggleDayExpanded = (index: number) => {
+    setExpandedDays((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
+  };
+
+  const expandAllDays = () => {
+    const next: Record<number, boolean> = {};
+    itinerary.forEach((_, i) => { next[i] = true; });
+    setExpandedDays(next);
+  };
+
+  const collapseAllDays = () => {
+    setExpandedDays({});
+  };
+
+  const updateDay = (index: number, field: keyof ItineraryDay, value: any) => {
+    setItinerary((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const addDay = () => {
+    setItinerary((prev) => {
+      const nextDayNum = prev.length + 1;
+      const newDay: ItineraryDay = {
+        day: nextDayNum,
+        title: `Day ${nextDayNum} Exploration & Highlights`,
+        description: `Full day exploration of prominent landmarks, cultural sites, and scenic spots in ${destination || 'the destination'}.`,
+        meals: 'Breakfast Included',
+      };
+      setExpandedDays((exp) => ({ ...exp, [prev.length]: true }));
+      return [...prev, newDay];
+    });
+  };
+
+  const removeDay = (index: number) => {
+    if (itinerary.length <= 1) return;
+    setItinerary((prev) => {
+      const filtered = prev.filter((_, i) => i !== index);
+      return filtered.map((d, i) => ({ ...d, day: i + 1 }));
+    });
+  };
+
+  const moveDay = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= itinerary.length) return;
+    setItinerary((prev) => {
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[targetIndex];
+      copy[targetIndex] = temp;
+      return copy.map((d, i) => ({ ...d, day: i + 1 }));
+    });
+    setExpandedDays((prev) => {
+      const copy = { ...prev };
+      const currentExp = prev[index] !== false;
+      const targetExp = prev[targetIndex] !== false;
+      copy[index] = targetExp;
+      copy[targetIndex] = currentExp;
+      return copy;
+    });
+  };
+
+  const syncItineraryWithDuration = () => {
+    const targetDays = Math.max(1, Number(days) || 1);
+    setItinerary((prev) => {
+      if (prev.length === targetDays) return prev;
+      if (prev.length < targetDays) {
+        const added: ItineraryDay[] = [];
+        for (let i = prev.length; i < targetDays; i++) {
+          const dayNum = i + 1;
+          added.push({
+            day: dayNum,
+            title: dayNum === targetDays ? 'Leisure & Airport Departure' : `Day ${dayNum} Sightseeing & Experiences`,
+            description: dayNum === targetDays 
+              ? 'Morning breakfast, hotel check-out, and chauffeur transfer to airport for departure.' 
+              : `Day trip and cultural excursion across scenic destinations in ${destination || 'the city'}.`,
+            meals: dayNum === targetDays ? 'Breakfast' : 'Breakfast & Lunch',
+          });
+        }
+        setExpandedDays((exp) => {
+          const next = { ...exp };
+          for (let i = prev.length; i < targetDays; i++) next[i] = true;
+          return next;
+        });
+        return [...prev, ...added];
+      } else {
+        return prev.slice(0, targetDays);
+      }
+    });
+  };
+
+  const syncDurationWithItinerary = () => {
+    const count = itinerary.length;
+    const n = Math.max(1, count - 1);
+    setDays(count);
+    setNights(n);
+    setDuration(`${count} Days / ${n} Nights`);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const discount = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
     
+    // Prepare and sanitize manual day-by-day itinerary
+    const cleanedItinerary: ItineraryDay[] = itinerary
+      .filter((d) => (d.title && d.title.trim()) || (d.description && d.description.trim()))
+      .map((d, idx) => ({
+        day: idx + 1,
+        title: d.title.trim() || `Day ${idx + 1} - ${destination || 'Trip'} Schedule`,
+        description: d.description.trim() || `Scheduled sightseeing and travel experiences in ${destination || 'the city'}.`,
+        meals: d.meals ? d.meals.trim() : 'Breakfast Included',
+        activities: d.activities && d.activities.length > 0 ? d.activities : undefined,
+      }));
+
+    const finalItinerary = cleanedItinerary.length > 0 ? cleanedItinerary : [
+      { day: 1, title: 'Arrival & Welcome Dinner', description: `Check into ${hotelName} and enjoy an evening orientation feast.`, meals: 'Dinner Included' },
+      { day: 2, title: `${destination || 'City'} Highlights & Culture Tour`, description: 'Full day sightseeing to prominent historical monuments and viewpoints.', meals: 'Breakfast & Lunch' },
+    ];
+
+    const finalDays = Number(days) || finalItinerary.length;
+    const finalNights = Number(nights) || Math.max(1, finalDays - 1);
+
     const savedPkg: HolidayPackage = {
       id: pkg?.id || `pkg-${Date.now().toString().slice(-6)}`,
       title,
       destination,
       country,
-      duration,
-      days: Number(days),
-      nights: Number(nights),
+      duration: duration || `${finalDays} Days / ${finalNights} Nights`,
+      days: finalDays,
+      nights: finalNights,
       price: Number(price),
       originalPrice: Number(originalPrice),
       discountPercent: discount,
@@ -2010,13 +2183,10 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
       overview: overview || `Discover ${destination} with guided tours, scenic highlights, and luxurious accommodations.`,
       inclusions: inclusionsText.split('\n').map((s) => s.trim()).filter(Boolean),
       exclusions: exclusionsText.split('\n').map((s) => s.trim()).filter(Boolean),
-      itinerary: pkg?.itinerary || [
-        { day: 1, title: 'Arrival & Welcome Dinner', description: `Check into ${hotelName} and enjoy an evening orientation feast.`, meals: 'Dinner' },
-        { day: 2, title: `${destination} Highlights & Culture Tour`, description: 'Full day sightseeing to prominent historical monuments and viewpoints.', meals: 'Breakfast & Lunch' },
-      ],
+      itinerary: finalItinerary,
       hotelName,
       hotelRating: 5,
-      nextDepartureDate: 'Weekly Departures',
+      nextDepartureDate: pkg?.nextDepartureDate || 'Weekly Departures',
     };
 
     onSave(savedPkg);
@@ -2024,10 +2194,10 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
-      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 p-6 sm:p-8 relative">
+      <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200 p-6 sm:p-8 relative">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 text-slate-500"
+          className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -2093,16 +2263,50 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Duration Text</label>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block font-bold text-slate-700 mb-1">Duration Label</label>
               <input
                 type="text"
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                placeholder="e.g. 6 Days / 5 Nights"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-1 focus:ring-blue-500"
               />
             </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Total Days</label>
+              <input
+                type="number"
+                min={1}
+                max={60}
+                value={days}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setDays(val);
+                  setDuration(`${val} Days / ${nights} Nights`);
+                }}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Total Nights</label>
+              <input
+                type="number"
+                min={0}
+                max={60}
+                value={nights}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setNights(val);
+                  setDuration(`${days} Days / ${val} Nights`);
+                }}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">Price (₹ INR) *</label>
               <input
@@ -2110,7 +2314,7 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
                 required
                 value={price}
                 onChange={(e) => setPrice(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-1 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -2119,7 +2323,7 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
                 type="number"
                 value={originalPrice}
                 onChange={(e) => setOriginalPrice(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-1 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -2130,7 +2334,7 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as any)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer focus:bg-white"
               >
                 <option value="Domestic">Domestic</option>
                 <option value="International">International</option>
@@ -2145,7 +2349,7 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
                 type="text"
                 value={hotelName}
                 onChange={(e) => setHotelName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
               />
             </div>
           </div>
@@ -2156,7 +2360,7 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
               type="url"
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
             />
           </div>
 
@@ -2166,18 +2370,250 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
               rows={2}
               value={overview}
               onChange={(e) => setOverview(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
             ></textarea>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* ============================================================ */}
+          {/* DAY-BY-DAY TRIP ITINERARY MANUAL EDITOR */}
+          {/* ============================================================ */}
+          <div className="pt-3 border-t border-slate-200">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 text-sm">Day-to-Day Trip Itinerary</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                      {itinerary.length} Days
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Manually update each day's schedule, meal plan, and sightseeing details. Persists to Google Sheets.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={expandAllDays}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
+                >
+                  Expand All
+                </button>
+                <button
+                  type="button"
+                  onClick={collapseAllDays}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
+                >
+                  Collapse All
+                </button>
+                <button
+                  type="button"
+                  onClick={addDay}
+                  className="px-3 py-1 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-1 cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Day</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sync duration notice if mismatch */}
+            {itinerary.length !== Number(days) && (
+              <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-2 text-[11px] text-amber-800">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>
+                    Duration is <strong>{days} Days</strong>, but itinerary has <strong>{itinerary.length} Days</strong>.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={syncItineraryWithDuration}
+                    className="font-bold underline hover:no-underline text-amber-900 cursor-pointer"
+                  >
+                    Adjust Itinerary to {days} Days
+                  </button>
+                  <span className="text-amber-400">|</span>
+                  <button
+                    type="button"
+                    onClick={syncDurationWithItinerary}
+                    className="font-bold underline hover:no-underline text-amber-900 cursor-pointer"
+                  >
+                    Update Duration to {itinerary.length} Days
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Days List */}
+            <div className="space-y-3">
+              {itinerary.map((item, index) => {
+                const isExpanded = expandedDays[index] !== false;
+                return (
+                  <div
+                    key={index}
+                    className="border border-slate-200 rounded-2xl bg-white shadow-xs overflow-hidden transition-all hover:border-slate-300"
+                  >
+                    {/* Day Header Bar */}
+                    <div className="p-3 bg-slate-50/80 border-b border-slate-100 flex items-center gap-2 sm:gap-3">
+                      {/* Day Badge */}
+                      <span className="px-2.5 py-1 bg-blue-600 text-white font-bold text-xs rounded-lg shrink-0">
+                        Day {index + 1}
+                      </span>
+
+                      {/* Day Title Input */}
+                      <div className="flex-1 min-w-0">
+                        <input
+                          type="text"
+                          required
+                          value={item.title}
+                          onChange={(e) => updateDay(index, 'title', e.target.value)}
+                          placeholder={`e.g. Day ${index + 1}: Arrival, City Highlights & Welcome Dinner`}
+                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:ring-1 focus:ring-blue-500 focus:bg-white"
+                        />
+                      </div>
+
+                      {/* Day Actions */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => moveDay(index, -1)}
+                          disabled={index === 0}
+                          title="Move Earlier (Up)"
+                          className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
+                        >
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveDay(index, 1)}
+                          disabled={index === itinerary.length - 1}
+                          title="Move Later (Down)"
+                          className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeDay(index)}
+                          disabled={itinerary.length <= 1}
+                          title="Delete Day"
+                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleDayExpanded(index)}
+                          title={isExpanded ? 'Collapse Day' : 'Expand Day'}
+                          className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 cursor-pointer"
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4 text-blue-600" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Day Expanded Form Body */}
+                    {isExpanded && (
+                      <div className="p-3.5 space-y-3 bg-white">
+                        {/* Meal Plan */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="font-bold text-slate-700 flex items-center gap-1.5">
+                              <Utensils className="w-3.5 h-3.5 text-amber-600" />
+                              <span>Meals Plan for Day {index + 1}</span>
+                            </label>
+                            <span className="text-[10px] text-slate-400">Click a preset or customize</span>
+                          </div>
+
+                          {/* Quick presets */}
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {MEAL_PRESETS.map((preset) => {
+                              const isSelected = item.meals === preset;
+                              return (
+                                <button
+                                  type="button"
+                                  key={preset}
+                                  onClick={() => updateDay(index, 'meals', preset)}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition-all cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-amber-100 text-amber-800 border-amber-300 shadow-2xs font-bold'
+                                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {preset}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={item.meals}
+                            onChange={(e) => updateDay(index, 'meals', e.target.value)}
+                            placeholder="e.g. Breakfast & Jimbaran Beach Seafood Dinner"
+                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 text-xs focus:bg-white focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        {/* Description & Activities */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="font-bold text-slate-700 flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Day Schedule, Activities & Sightseeing Details *</span>
+                            </label>
+                            <span className="text-[10px] text-slate-400">
+                              {item.description ? `${item.description.length} chars` : 'Required'}
+                            </span>
+                          </div>
+                          <textarea
+                            rows={3}
+                            required
+                            value={item.description}
+                            onChange={(e) => updateDay(index, 'description', e.target.value)}
+                            placeholder="Provide full details: morning pickup, sightseeing attractions visited, tickets included, transfer times, guided experiences, scenic photography spots, and evening leisure..."
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 text-xs leading-relaxed focus:bg-white focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom Add Day Action */}
+            <div className="mt-3 flex items-center justify-between gap-3 pt-2">
+              <button
+                type="button"
+                onClick={addDay}
+                className="w-full sm:w-auto px-4 py-2 border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50/50 hover:bg-blue-50 text-blue-700 font-bold rounded-xl flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Day {itinerary.length + 1} to Itinerary</span>
+              </button>
+
+              <p className="hidden sm:block text-[11px] text-slate-400 text-right">
+                All changes sync automatically to Google Sheets database when you save.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-2">
             <div>
               <label className="block font-bold text-slate-700 mb-1">Inclusions (One per line)</label>
               <textarea
                 rows={3}
                 value={inclusionsText}
                 onChange={(e) => setInclusionsText(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
               ></textarea>
             </div>
             <div>
@@ -2186,12 +2622,12 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
                 rows={3}
                 value={exclusionsText}
                 onChange={(e) => setExclusionsText(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
               ></textarea>
             </div>
           </div>
 
-          <div className="pt-4 flex justify-end gap-2">
+          <div className="pt-4 flex justify-end gap-2 border-t border-slate-200">
             <button
               type="button"
               disabled={isSaving}
@@ -2211,7 +2647,7 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
                   <span>Syncing to Google Sheets...</span>
                 </>
               ) : (
-                <span>Save Package</span>
+                <span>Save Package & Itinerary</span>
               )}
             </button>
           </div>

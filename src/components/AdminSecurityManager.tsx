@@ -7,21 +7,12 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   LogOut, 
-  History, 
-  Clock, 
   RotateCcw, 
   Eye, 
-  EyeOff, 
-  Terminal,
-  FileText,
-  Trash2,
-  Sparkles,
-  Copy,
-  ExternalLink
+  EyeOff
 } from 'lucide-react';
 import { adminAuthService } from '../services/adminAuthService';
-import { AdminUser, SecurityAuditLog } from '../types';
-import { formatDateDDMMYYYY } from '../utils/formatters';
+import { AdminUser } from '../types';
 
 interface AdminSecurityManagerProps {
   currentUser: AdminUser | null;
@@ -47,24 +38,9 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
   const [emailInput, setEmailInput] = useState(currentUser?.email || '');
   const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Audit logs state
-  const [auditLogs, setAuditLogs] = useState<SecurityAuditLog[]>([]);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
-  const [copiedDirect, setCopiedDirect] = useState(false);
-
-  const refreshLogs = () => {
-    setAuditLogs(adminAuthService.getAuditLogs());
-  };
-
-  const handleCopyDirectLink = () => {
-    const url = `${window.location.origin}/?admin=true`;
-    navigator.clipboard.writeText(url);
-    setCopiedDirect(true);
-    setTimeout(() => setCopiedDirect(false), 2500);
-  };
 
   useEffect(() => {
-    refreshLogs();
     if (currentUser) {
       setNameInput(currentUser.name);
       setEmailInput(currentUser.email);
@@ -91,7 +67,6 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      refreshLogs();
     } else {
       setPasswordMsg({ type: 'error', text: res.message });
     }
@@ -106,7 +81,6 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
       setProfileMsg({ type: 'success', text: res.message });
       const updatedUser = adminAuthService.getCurrentUser();
       if (updatedUser) onProfileUpdated(updatedUser);
-      refreshLogs();
     } else {
       setProfileMsg({ type: 'error', text: res.message });
     }
@@ -118,12 +92,6 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
     setPasswordMsg({ type: 'success', text: 'Admin credentials restored to defaults: admin / admin' });
     const updated = adminAuthService.getCurrentUser();
     if (updated) onProfileUpdated(updated);
-    refreshLogs();
-  };
-
-  const handleClearLogs = () => {
-    adminAuthService.clearAuditLogs();
-    refreshLogs();
   };
 
   return (
@@ -144,7 +112,7 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Manage your administrator credentials, update contact records, and inspect security audit trails.
+              Manage your administrator credentials, security preferences, and update administrator profile.
             </p>
           </div>
         </div>
@@ -359,142 +327,6 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
               {currentUser?.lastLoginAt ? new Date(currentUser.lastLoginAt).toLocaleString() : 'Just now'}
             </span>
           </div>
-        </div>
-      </div>
-
-      {/* Out-of-Site Staff Access & Shortcuts Information */}
-      <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-7 border border-slate-800 shadow-md">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
-              <Terminal className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white">Out-of-Site Access & Private URLs</h3>
-              <p className="text-[11px] text-slate-400">All public links to this Admin Portal are hidden from the public website.</p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleCopyDirectLink}
-            className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
-          >
-            {copiedDirect ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
-                <span>Link Copied to Clipboard!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                <span>Copy Direct Portal Link</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 text-xs">
-          <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/80 space-y-1">
-            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider block">1. Direct URL Trigger</span>
-            <code className="text-white font-mono text-xs font-bold block truncate">{window.location.origin}/?admin=true</code>
-            <p className="text-[11px] text-slate-400">Bookmark this URL or append <code className="text-blue-300 font-mono">/?admin=true</code> to hit the portal directly.</p>
-          </div>
-
-          <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/80 space-y-1">
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">2. Keyboard Shortcut</span>
-            <div className="text-white font-mono text-xs font-bold">Ctrl + Shift + A</div>
-            <p className="text-[11px] text-slate-400">Press on any page to immediately open the admin authentication gate.</p>
-          </div>
-
-          <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/80 space-y-1">
-            <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider block">3. Mobile Staff Tap</span>
-            <div className="text-white text-xs font-bold">Footer Triple-Click</div>
-            <p className="text-[11px] text-slate-400">Tap the footer copyright line 3 times rapidly to access the portal from mobile.</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Security Audit Trail Table */}
-      <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center">
-              <History className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Security & Authentication Audit Trail</h3>
-              <p className="text-[11px] text-slate-500">Live inspection log of sign-ins, password updates, and protection events.</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={refreshLogs}
-              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
-            >
-              Refresh Log
-            </button>
-            <button
-              onClick={handleClearLogs}
-              className="px-3 py-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
-              title="Clear audit trail"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 text-[10px] uppercase font-bold text-slate-400">
-                <th className="py-2.5 px-3">Event Type</th>
-                <th className="py-2.5 px-3">Timestamp</th>
-                <th className="py-2.5 px-3">Activity Details</th>
-                <th className="py-2.5 px-3">Client Device</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {auditLogs.slice(0, 10).map((log) => (
-                <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-3 px-3">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                        log.action === 'LOGIN_SUCCESS'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : log.action === 'LOGIN_FAILED'
-                          ? 'bg-rose-100 text-rose-800'
-                          : log.action === 'LOGOUT'
-                          ? 'bg-slate-100 text-slate-800'
-                          : 'bg-blue-100 text-blue-800'
-                      }`}
-                    >
-                      {log.action}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 text-slate-500 font-mono whitespace-nowrap text-[11px]">
-                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} •{' '}
-                    {formatDateDDMMYYYY(log.timestamp)}
-                  </td>
-                  <td className="py-3 px-3 text-slate-800 font-medium">
-                    {log.details}
-                  </td>
-                  <td className="py-3 px-3 text-slate-400 text-[11px] truncate max-w-[180px]">
-                    {log.userAgent || 'Web Client'}
-                  </td>
-                </tr>
-              ))}
-              {auditLogs.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-6 text-center text-slate-400 italic">
-                    No security events recorded yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </div>
 

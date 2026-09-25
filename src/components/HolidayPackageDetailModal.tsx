@@ -187,7 +187,7 @@ export const HolidayPackageDetailModal: React.FC<HolidayPackageDetailModalProps>
                     : 'border-transparent text-slate-500 hover:text-slate-900'
                 }`}
               >
-                Day-by-Day Itinerary ({pkg.itinerary.length} Days)
+                Day-by-Day Itinerary ({pkg.itinerary?.length || 0} Days)
               </button>
 
               <button
@@ -216,43 +216,50 @@ export const HolidayPackageDetailModal: React.FC<HolidayPackageDetailModalProps>
             {/* Tab 1: Itinerary */}
             {activeTab === 'itinerary' && (
               <div className="space-y-3">
-                {pkg.itinerary.map((item) => {
-                  const isOpen = expandedDay === item.day;
-                  return (
-                    <div
-                      key={item.day}
-                      className="border border-slate-200 rounded-xl overflow-hidden transition-all bg-white"
-                    >
-                      <button
-                        onClick={() => setExpandedDay(isOpen ? null : item.day)}
-                        className="w-full px-4 py-3 text-left flex items-center justify-between gap-3 bg-slate-50/70 hover:bg-slate-100"
+                {pkg.itinerary && pkg.itinerary.length > 0 ? (
+                  pkg.itinerary.map((item, idx) => {
+                    const dayNum = item.day || idx + 1;
+                    const isOpen = expandedDay === dayNum;
+                    return (
+                      <div
+                        key={idx}
+                        className="border border-slate-200 rounded-xl overflow-hidden transition-all bg-white"
                       >
-                        <div className="flex items-center gap-3">
-                          <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                            D{item.day}
-                          </span>
-                          <span className="text-sm font-bold text-slate-800">
-                            {item.title}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {item.meals && (
-                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                              {item.meals}
+                        <button
+                          onClick={() => setExpandedDay(isOpen ? null : dayNum)}
+                          className="w-full px-4 py-3 text-left flex items-center justify-between gap-3 bg-slate-50/70 hover:bg-slate-100 cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                              D{dayNum}
                             </span>
-                          )}
-                          {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                        </div>
-                      </button>
+                            <span className="text-sm font-bold text-slate-800">
+                              {item.title}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {item.meals && (
+                              <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                                {item.meals}
+                              </span>
+                            )}
+                            {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                          </div>
+                        </button>
 
-                      {isOpen && (
-                        <div className="p-4 text-xs sm:text-sm text-slate-600 bg-white border-t border-slate-100 leading-relaxed">
-                          {item.description}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        {isOpen && (
+                          <div className="p-4 text-xs sm:text-sm text-slate-600 bg-white border-t border-slate-100 leading-relaxed whitespace-pre-line">
+                            {item.description}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl">
+                    Detailed itinerary will be provided upon inquiry.
+                  </div>
+                )}
               </div>
             )}
 

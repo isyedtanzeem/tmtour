@@ -187,11 +187,83 @@ export class SheetsService {
     }
   }
 
+  private normalizePackage(pkg: any): HolidayPackage {
+    if (!pkg) return pkg;
+    let itinerary = pkg.itinerary;
+    if (typeof itinerary === 'string') {
+      try {
+        itinerary = JSON.parse(itinerary);
+      } catch {
+        // Plain text fallback if user typed manually in Google Sheets cell
+        const lines = itinerary.split('\n').map((l: string) => l.trim()).filter(Boolean);
+        itinerary = lines.map((line: string, idx: number) => {
+          const dayMatch = line.match(/^Day\s*(\d+)[:\s-]*(.*)/i);
+          const dayNum = dayMatch ? parseInt(dayMatch[1], 10) : idx + 1;
+          const rest = dayMatch ? dayMatch[2] : line;
+          const parts = rest.split(/[-–—:]+/);
+          const title = parts[0]?.trim() || `Day ${dayNum}`;
+          const desc = parts.slice(1).join(' - ').trim() || title;
+          return {
+            day: dayNum,
+            title,
+            description: desc,
+            meals: 'Standard Meals',
+          };
+        });
+      }
+    }
+    
+    if (Array.isArray(itinerary) && itinerary.length > 0) {
+      itinerary = itinerary.map((item: any, idx: number) => ({
+        day: Number(item.day) || idx + 1,
+        title: String(item.title || `Day ${idx + 1}`),
+        description: String(item.description || ''),
+        meals: String(item.meals || 'Breakfast Included'),
+        activities: Array.isArray(item.activities) ? item.activities : undefined,
+      }));
+    } else {
+      itinerary = [];
+    }
+
+    let inclusions = pkg.inclusions;
+    if (typeof inclusions === 'string') {
+      try { inclusions = JSON.parse(inclusions); } catch { inclusions = inclusions.split('\n').map((s: string) => s.trim()).filter(Boolean); }
+    }
+    if (!Array.isArray(inclusions)) inclusions = [];
+
+    let exclusions = pkg.exclusions;
+    if (typeof exclusions === 'string') {
+      try { exclusions = JSON.parse(exclusions); } catch { exclusions = exclusions.split('\n').map((s: string) => s.trim()).filter(Boolean); }
+    }
+    if (!Array.isArray(exclusions)) exclusions = [];
+
+    let galleryImages = pkg.galleryImages;
+    if (typeof galleryImages === 'string') {
+      try { galleryImages = JSON.parse(galleryImages); } catch { galleryImages = [pkg.imageUrl].filter(Boolean); }
+    }
+    if (!Array.isArray(galleryImages)) galleryImages = [pkg.imageUrl].filter(Boolean);
+
+    return {
+      ...pkg,
+      days: Number(pkg.days) || (itinerary.length > 0 ? itinerary.length : 5),
+      nights: Number(pkg.nights) || Math.max(1, (Number(pkg.days) || 5) - 1),
+      price: Number(pkg.price) || 0,
+      originalPrice: Number(pkg.originalPrice) || Number(pkg.price) || 0,
+      rating: Number(pkg.rating) || 4.9,
+      reviewCount: Number(pkg.reviewCount) || 100,
+      itinerary,
+      inclusions,
+      exclusions,
+      galleryImages,
+    };
+  }
+
   private loadCachedData(): void {
     try {
       const pkgRaw = localStorage.getItem(STORAGE_KEYS.PACKAGES);
       if (pkgRaw) {
-        this.packages = JSON.parse(pkgRaw);
+        const parsed = JSON.parse(pkgRaw);
+        this.packages = Array.isArray(parsed) ? parsed.map((p) => this.normalizePackage(p)) : [...DEFAULT_HOLIDAY_PACKAGES];
       } else {
         this.packages = [...DEFAULT_HOLIDAY_PACKAGES];
       }
@@ -650,7 +722,7 @@ export class SheetsService {
     let hasChanges = false;
 
     if (Array.isArray(data.packages) && data.packages.length > 0) {
-      this.packages = data.packages;
+      this.packages = data.packages.map((p: any) => this.normalizePackage(p));
       localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(this.packages));
       hasChanges = true;
     }
@@ -838,14 +910,16 @@ export class SheetsService {
       };
     }
 
-    // Verify package is present in updated list
-    const found = this.packages.find((p) => p.id === pkg.id);
-    if (!found) {
-      // Optimistically append to local state if Apps Script did not return the full array
-      this.packages.unshift(pkg);
-      localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(this.packages));
-      this.notify();
+    // Ensure local packages list is updated with the saved package
+    const normalized = this.normalizePackage(pkg);
+    const existingIndex = this.packages.findIndex((p) => p.id === pkg.id);
+    if (existingIndex !== -1) {
+      this.packages[existingIndex] = normalized;
+    } else {
+      this.packages.unshift(normalized);
     }
+    localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(this.packages));
+    this.notify();
 
     return {
       success: true,
