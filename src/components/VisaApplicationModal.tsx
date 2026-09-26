@@ -285,6 +285,18 @@ export const VisaApplicationModal: React.FC<VisaApplicationModalProps> = ({
                   </span>
                 </div>
 
+                {/* Embassy Fee & Service Charges Breakdown */}
+                <div className="bg-white rounded-xl p-2.5 border border-slate-200/90 mb-3 space-y-1 text-xs">
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span className="text-[11px] text-slate-500">Embassy / Govt Fee:</span>
+                    <span className="font-semibold text-slate-800">{formatCurrency(visa.embassyFee)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span className="text-[11px] text-slate-500">TripMyTour Service Charges:</span>
+                    <span className="font-semibold text-slate-800">{formatCurrency(visa.serviceFee)}</span>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="bg-white p-2 rounded-xl border border-slate-200/80">
                     <span className="text-[10px] text-slate-400 block font-medium">Processing</span>

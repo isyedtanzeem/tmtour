@@ -172,6 +172,18 @@ export const VisaServicesList: React.FC<VisaServicesListProps> = ({
                 </div>
               </div>
 
+              {/* Embassy Fee & Service Charges Breakdown */}
+              <div className="mb-3.5 p-2.5 bg-slate-50/90 rounded-xl border border-slate-100 space-y-1 text-xs">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-[11px] text-slate-500">Embassy / Govt Fee:</span>
+                  <span className="font-semibold text-slate-800">{formatCurrency(visa.embassyFee)}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-[11px] text-slate-500">Service Charges:</span>
+                  <span className="font-semibold text-slate-800">{formatCurrency(visa.serviceFee)}</span>
+                </div>
+              </div>
+
               {/* Document checklist preview */}
               <div className="mb-4 pt-3 border-t border-slate-100">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
@@ -194,13 +206,13 @@ export const VisaServicesList: React.FC<VisaServicesListProps> = ({
               <div className="flex items-end justify-between gap-2 mb-3.5">
                 <div>
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-0.5">
-                    All-Inclusive Fee
+                    All-Inclusive Total Fee
                   </span>
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-2xl font-black text-slate-900 tracking-tight">
                       {formatCurrency(visa.totalFee)}
                     </span>
-                    <span className="text-[11px] text-slate-400 font-medium">Govt + Service Fee</span>
+                    <span className="text-[11px] text-slate-500 font-medium">({formatCurrency(visa.embassyFee)} + {formatCurrency(visa.serviceFee)})</span>
                   </div>
                 </div>
 

@@ -258,6 +258,107 @@ export class SheetsService {
     };
   }
 
+  private normalizeVisa(v: any): VisaService {
+    if (!v) return v;
+
+    // Handle documentsRequired if JSON string or newline separated
+    let documentsRequired = v.documentsRequired;
+    if (typeof documentsRequired === 'string') {
+      try {
+        documentsRequired = JSON.parse(documentsRequired);
+      } catch {
+        documentsRequired = documentsRequired.split('\n').map((s: string) => s.trim()).filter(Boolean);
+      }
+    }
+    if (!Array.isArray(documentsRequired) || documentsRequired.length === 0) {
+      documentsRequired = [
+        'Color scanned copy of Indian Passport front & back (min 6 months validity)',
+        'Passport size photograph with white background (JPEG/PNG)',
+      ];
+    }
+
+    // Handle validity - support variations in column name from Google Sheets
+    let validity = String(
+      v.validity ??
+      v.Validity ??
+      v['validity / stay'] ??
+      v['Validity / Stay'] ??
+      v['validity/stay'] ??
+      v['Validity/Stay'] ??
+      ''
+    ).trim();
+
+    // Handle stayDuration - support variations in column name from Google Sheets
+    let stayDuration = String(
+      v.stayDuration ??
+      v.stay ??
+      v.Stay ??
+      v['stay duration'] ??
+      v['Stay Duration'] ??
+      v['stay_duration'] ??
+      ''
+    ).trim();
+
+    // If validity was entered as a combined string like "60 Days (Up to 30 Days)" in a single cell:
+    if (validity && !stayDuration && validity.includes('(') && validity.includes(')')) {
+      const match = validity.match(/^(.*?)\s*\((.*?)\)$/);
+      if (match) {
+        validity = match[1].trim();
+        stayDuration = match[2].trim();
+      }
+    }
+
+    if (!validity) {
+      validity = '60 Days';
+    }
+    if (!stayDuration) {
+      stayDuration = 'Up to 30 Days';
+    }
+
+    const embassyFee = Number(v.embassyFee) || 0;
+    const serviceFee = Number(v.serviceFee) || 0;
+    const totalFee = Number(v.totalFee) || (embassyFee + serviceFee) || 0;
+    const expressFee = Number(v.expressFee) || 0;
+
+    const expressAvailable =
+      v.expressAvailable === true ||
+      v.expressAvailable === 'TRUE' ||
+      v.expressAvailable === 'true' ||
+      v.expressAvailable === 1 ||
+      v.expressAvailable === '1';
+
+    const popular =
+      v.popular === true ||
+      v.popular === 'TRUE' ||
+      v.popular === 'true' ||
+      v.popular === 1 ||
+      v.popular === '1';
+
+    return {
+      ...v,
+      id: String(v.id || `visa-${Date.now()}`),
+      country: String(v.country || ''),
+      countryCode: String(v.countryCode || 'IN'),
+      flagEmoji: String(v.flagEmoji || '🌐'),
+      flagUrl: v.flagUrl ? String(v.flagUrl) : undefined,
+      visaType: String(v.visaType || 'Tourist Visa'),
+      category: (v.category as VisaService['category']) || 'Tourist',
+      processingTime: String(v.processingTime || '3 - 5 Working Days'),
+      validity,
+      stayDuration,
+      entryType: (v.entryType as VisaService['entryType']) || 'Single Entry',
+      embassyFee,
+      serviceFee,
+      totalFee,
+      expressAvailable,
+      expressFee,
+      expressProcessingTime: String(v.expressProcessingTime || '24-48 hours expedited service'),
+      documentsRequired,
+      popular,
+      description: String(v.description || `Official visa assistance for ${v.country || 'travel'}.`),
+    };
+  }
+
   private loadCachedData(): void {
     try {
       const pkgRaw = localStorage.getItem(STORAGE_KEYS.PACKAGES);
@@ -270,7 +371,8 @@ export class SheetsService {
 
       const visaRaw = localStorage.getItem(STORAGE_KEYS.VISAS);
       if (visaRaw) {
-        this.visas = JSON.parse(visaRaw);
+        const parsed = JSON.parse(visaRaw);
+        this.visas = Array.isArray(parsed) ? parsed.map((v) => this.normalizeVisa(v)) : [...DEFAULT_VISA_SERVICES];
       } else {
         this.visas = [...DEFAULT_VISA_SERVICES];
       }
@@ -727,7 +829,7 @@ export class SheetsService {
       hasChanges = true;
     }
     if (Array.isArray(data.visas) && data.visas.length > 0) {
-      this.visas = data.visas;
+      this.visas = data.visas.map((v: any) => this.normalizeVisa(v));
       localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(this.visas));
       hasChanges = true;
     }
@@ -971,16 +1073,27 @@ export class SheetsService {
   }
 
   public async saveVisa(visa: VisaService): Promise<{ success: boolean; message: string; error?: string }> {
+    const normalized = this.normalizeVisa(visa);
     const rawUrl = (this.config.webAppUrl || getEnvWebAppUrl() || '').trim();
+
     if (!rawUrl || !this.isValidWebAppUrl(rawUrl)) {
+      const existingIndex = this.visas.findIndex((v) => v.id === visa.id);
+      if (existingIndex !== -1) {
+        this.visas[existingIndex] = normalized;
+      } else {
+        this.visas.unshift(normalized);
+      }
+      localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(this.visas));
+      this.notify();
+
       return {
         success: false,
-        message: 'Google Sheets database is not connected.',
+        message: 'Saved locally. Google Sheets database is not connected.',
         error: 'To permanently save visa services across sessions on your custom domain, connect your Google Apps Script Web App URL in Google Sheets settings (or add VITE_GOOGLE_SHEETS_WEB_APP_URL in Vercel). Visa services cannot be saved without an active Google Sheet database.',
       };
     }
 
-    const result = await this.executeSheetsAction('saveVisa', { data: visa });
+    const result = await this.executeSheetsAction('saveVisa', { data: normalized });
 
     if (!result.success) {
       return {
@@ -990,16 +1103,18 @@ export class SheetsService {
       };
     }
 
-    const found = this.visas.find((v) => v.id === visa.id);
-    if (!found) {
-      this.visas.unshift(visa);
-      localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(this.visas));
-      this.notify();
+    const existingIndex = this.visas.findIndex((v) => v.id === visa.id);
+    if (existingIndex !== -1) {
+      this.visas[existingIndex] = normalized;
+    } else {
+      this.visas.unshift(normalized);
     }
+    localStorage.setItem(STORAGE_KEYS.VISAS, JSON.stringify(this.visas));
+    this.notify();
 
     return {
       success: true,
-      message: `Visa service for "${visa.country}" saved and instantly synced to Google Sheets database!`,
+      message: `Visa service for "${visa.country}" (${visa.visaType}) saved and instantly synced to Google Sheets database!`,
     };
   }
 

@@ -938,6 +938,22 @@ function ensureTabsExist(ss) {
       sheet.getRange(1, 1, 1, req.headers.length).setValues([req.headers]);
       sheet.getRange(1, 1, 1, req.headers.length).setFontWeight("bold").setBackground(req.color);
       sheet.setFrozenRows(1);
+    } else {
+      // Auto-append missing headers to existing sheets so new fields (like validity & stayDuration) sync immediately
+      var lastCol = sheet.getLastColumn();
+      if (lastCol > 0) {
+        var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+        var missingHeaders = [];
+        for (var h = 0; h < req.headers.length; h++) {
+          if (existingHeaders.indexOf(req.headers[h]) === -1) {
+            missingHeaders.push(req.headers[h]);
+          }
+        }
+        if (missingHeaders.length > 0) {
+          sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+          sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setFontWeight("bold").setBackground(req.color);
+        }
+      }
     }
   }
 

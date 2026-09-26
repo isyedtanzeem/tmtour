@@ -409,18 +409,37 @@ export default function App() {
                             <span className="font-semibold">{v.processingTime}</span>
                           </div>
                           <div className="flex justify-between">
+                            <span className="text-slate-400">Validity:</span>
+                            <span className="font-semibold">{v.validity}</span>
+                          </div>
+                          <div className="flex justify-between">
                             <span className="text-slate-400">Stay Duration:</span>
                             <span className="font-semibold">{v.stayDuration}</span>
                           </div>
                         </div>
+
+                        {/* Embassy Fee & Service Charges Breakdown */}
+                        <div className="mt-2.5 p-2.5 bg-slate-50/90 rounded-xl border border-slate-100 space-y-1 text-xs">
+                          <div className="flex justify-between items-center text-slate-600">
+                            <span className="text-[11px] text-slate-500">Embassy / Govt Fee:</span>
+                            <span className="font-semibold text-slate-800">{formatCurrency(v.embassyFee)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-slate-600">
+                            <span className="text-[11px] text-slate-500">Service Charges:</span>
+                            <span className="font-semibold text-slate-800">{formatCurrency(v.serviceFee)}</span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="pt-4 border-t border-slate-100 mt-4">
+                      <div className="pt-3 border-t border-slate-100 mt-3">
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs text-slate-500 font-medium">All-Inclusive Govt + Service Fee</span>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Fee</span>
+                            <span className="text-base font-extrabold text-slate-900">{formatCurrency(v.totalFee)}</span>
+                          </div>
                           <button
                             onClick={() => setSelectedVisa(v)}
-                            className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                            className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
                           >
                             <span>Checklist</span>
                             <ChevronRight className="w-3.5 h-3.5" />

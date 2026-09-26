@@ -924,8 +924,9 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                       <td className="py-3.5 px-4 text-slate-600">
                         {v.processingTime}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-600">
-                        {v.validity} ({v.stayDuration})
+                      <td className="py-3.5 px-4 text-slate-700">
+                        <div className="font-semibold text-slate-900">{v.validity || '60 Days'}</div>
+                        <div className="text-[11px] text-slate-500 font-medium">({v.stayDuration || 'Up to 30 Days'})</div>
                       </td>
                       <td className="py-3.5 px-4 font-bold text-slate-900">
                         {formatCurrency(v.totalFee)}
@@ -2807,6 +2808,79 @@ const VisaFormModal: React.FC<VisaFormModalProps> = ({
                 <option value="Multiple Entry">Multiple Entry</option>
                 <option value="Transit">Transit</option>
               </select>
+            </div>
+          </div>
+
+          {/* Validity & Stay Duration Controls */}
+          <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-blue-600" />
+                <span>Validity & Length of Stay</span>
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium">Syncs directly to Google Sheets</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Visa Validity *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={validity}
+                  onChange={(e) => setValidity(e.target.value)}
+                  placeholder="e.g. 60 Days / 60 Days from issue date"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {['30 Days', '60 Days', '60 Days from issue date', '90 Days', '6 Months'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setValidity(preset)}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-semibold transition-colors cursor-pointer ${
+                        validity === preset
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-200/70 hover:bg-slate-300 text-slate-700'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Permitted Stay Duration *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={stayDuration}
+                  onChange={(e) => setStayDuration(e.target.value)}
+                  placeholder="e.g. Up to 30 Days / 90 Days"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {['Up to 14 Days', 'Up to 30 Days', 'Up to 60 Days', 'Up to 90 Days', '90 Days'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setStayDuration(preset)}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-semibold transition-colors cursor-pointer ${
+                        stayDuration === preset
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-200/70 hover:bg-slate-300 text-slate-700'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
