@@ -137,32 +137,6 @@ export default function App() {
     }
   }, [activeTab]);
 
-  // Global staff shortcut: Ctrl + Shift + A (or Cmd + Shift + A)
-  useEffect(() => {
-    const handleShortcut = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
-        e.preventDefault();
-        setActiveTab((prev) => {
-          const next = prev === 'admin' ? 'home' : 'admin';
-          if (next === 'admin') {
-            try {
-              window.history.pushState(null, '', '/?admin=true');
-            } catch (e) {}
-            showToast('Admin Portal accessed (Staff shortcut)');
-          } else {
-            try {
-              window.history.pushState(null, '', '/');
-            } catch (e) {}
-            showToast('Returned to public website');
-          }
-          return next;
-        });
-      }
-    };
-    window.addEventListener('keydown', handleShortcut);
-    return () => window.removeEventListener('keydown', handleShortcut);
-  }, []);
-
   useEffect(() => {
     // Initial data load
     loadData();
@@ -206,17 +180,6 @@ export default function App() {
     setInquiryPackage(pkg);
   };
 
-  const handleManualSync = () => {
-    sheetsService.syncWithGoogleSheets().then((res) => {
-      loadData();
-      if (res && res.success && sheetsService.getConfig().isCustomUrlActive) {
-        showToast('Data synchronized successfully!');
-      } else {
-        showToast('Database up to date');
-      }
-    });
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
       {/* Dynamic SEO Head Management */}
@@ -240,11 +203,14 @@ export default function App() {
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        sheetsConfig={sheetsConfig}
-        onSyncClick={handleManualSync}
-        isSyncing={sheetsConfig.syncStatus === 'syncing'}
         isAdminAuthenticated={!!adminUser}
         onExitAdmin={handleExitAdmin}
+        onLogout={() => {
+          adminAuthService.logout();
+          setAdminUser(null);
+          handleExitAdmin();
+          showToast('Admin logged out successfully');
+        }}
       />
 
       {/* Main Body content according to active tab */}

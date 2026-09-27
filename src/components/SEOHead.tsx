@@ -48,8 +48,8 @@ export const SEOHead: React.FC<SEOHeadProps> = ({
       title = 'Contact Travel Desk & Concierge | TripMyTour Support';
       description = 'Get in touch with TripMyTour holiday specialists via WhatsApp (+91 98803 71756), phone, or email for custom domestic itineraries and visa inquiries.';
     } else if (activeTab === 'admin') {
-      title = 'Staff Portal & Sheet Sync Terminal | TripMyTour';
-      description = 'TripMyTour internal operations and data synchronization console.';
+      title = 'Operations & Admin Console | TripMyTour';
+      description = 'TripMyTour internal operations and administration portal.';
     }
 
     // Update document title

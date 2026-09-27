@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Database, 
   Compass, 
   FileCheck, 
   Plus, 
@@ -17,14 +16,9 @@ import {
   Clock, 
   DollarSign, 
   Star, 
-  Code,
   Save,
   Users,
   Image as ImageIcon,
-  UploadCloud,
-  FolderTree,
-  FileCode,
-  Download,
   Sparkles,
   Mail,
   ChevronRight,
@@ -35,13 +29,12 @@ import {
   Shield,
   Eye,
   ArrowLeft,
-  Globe,
-  HardDrive,
   Zap,
   Calendar,
   ChevronUp,
   ChevronDown,
-  Utensils
+  Utensils,
+  User
 } from 'lucide-react';
 import { HolidayPackage, VisaService, BookingInquiry, VisaApplication, GoogleSheetsConfig, ItineraryDay, AdminUser } from '../types';
 import { sheetsService } from '../services/sheetsService';
@@ -50,10 +43,9 @@ import { AdminLeadEmailManager } from './AdminLeadEmailManager';
 import { AdminSecurityManager } from './AdminSecurityManager';
 import { AdminUserManager } from './AdminUserManager';
 import { adminAuthService } from '../services/adminAuthService';
-import { GOOGLE_APPS_SCRIPT_CODE } from '../services/appsScriptTemplate';
 import { formatCurrency, formatDateDDMMYYYY } from '../utils/formatters';
 
-export type AdminTabType = 'packages' | 'visas' | 'bookings' | 'sheets' | 'emails' | 'security' | 'users';
+export type AdminTabType = 'packages' | 'visas' | 'bookings' | 'emails' | 'security' | 'users';
 
 interface AdminPortalProps {
   packages: HolidayPackage[];
@@ -91,9 +83,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const canManageLeadStatus = adminAuthService.canManageLeadStatus(currentUser || null);
   const canDeleteLeads = adminAuthService.canDeleteLeads(currentUser || null);
 
-  const canViewSheets = adminAuthService.canView(currentUser || null, 'databaseSync');
-  const canManageSheets = adminAuthService.canManage(currentUser || null, 'databaseSync');
-
   const canViewEmails = adminAuthService.canView(currentUser || null, 'emailAlerts');
   const canManageEmails = adminAuthService.canManage(currentUser || null, 'emailAlerts');
   const isSuperAdmin = adminAuthService.isSuperAdmin(currentUser || null);
@@ -104,7 +93,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (adminAuthService.canView(currentUser, 'leads')) return 'bookings';
     if (adminAuthService.canView(currentUser, 'visas')) return 'visas';
     if (adminAuthService.isSuperAdmin(currentUser)) return 'users';
-    if (adminAuthService.canView(currentUser, 'databaseSync')) return 'sheets';
     if (adminAuthService.canView(currentUser, 'emailAlerts')) return 'emails';
     return 'security';
   };
@@ -118,7 +106,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         case 'packages': return canViewPackages;
         case 'visas': return canViewVisas;
         case 'bookings': return canViewLeads;
-        case 'sheets': return canViewSheets;
         case 'emails': return canViewEmails;
         case 'users': return isSuperAdmin;
         case 'security': return true;
@@ -129,8 +116,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (!isCurrentTabAllowed()) {
       setAdminTab(getInitialTab());
     }
-  }, [currentUser, canViewPackages, canViewVisas, canViewLeads, canViewSheets, canViewEmails, isSuperAdmin, adminTab]);
-  const [copiedDirectUrl, setCopiedDirectUrl] = useState(false);
+  }, [currentUser, canViewPackages, canViewVisas, canViewLeads, canViewEmails, isSuperAdmin, adminTab]);
   const [emailRecipientCount, setEmailRecipientCount] = useState<number>(() => {
     return leadEmailService.getSettings().recipients.filter((r) => r.active).length;
   });
@@ -141,15 +127,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     });
     return () => unsub();
   }, []);
-
-  // Apps Script Settings Form State
-  const [webAppUrlInput, setWebAppUrlInput] = useState(sheetsConfig.webAppUrl);
-  const [sheetIdInput, setSheetIdInput] = useState(sheetsConfig.sheetId);
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [testingEmail, setTestingEmail] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [copiedScript, setCopiedScript] = useState(false);
-  const [copiedEnvVar, setCopiedEnvVar] = useState(false);
 
   // Modal states for Package CRUD
   const [editingPackage, setEditingPackage] = useState<HolidayPackage | null>(null);
@@ -166,176 +143,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [isSavingVisa, setIsSavingVisa] = useState(false);
   const [visaSaveError, setVisaSaveError] = useState<string | null>(null);
   const [isDeletingVisa, setIsDeletingVisa] = useState(false);
-  const [isSavingToFileSystem, setIsSavingToFileSystem] = useState(false);
-  const [copiedFsSnippet, setCopiedFsSnippet] = useState(false);
-
-  // Save directly to file system (src/config/sheetsConfig.ts)
-  const handleSaveToFileSystem = async () => {
-    let cleanUrl = webAppUrlInput.trim();
-    let cleanSheetId = sheetIdInput.trim();
-
-    if (!cleanUrl) {
-      setTestResult({
-        success: false,
-        message: 'Please paste your Google Apps Script Web App URL first before saving to file system.',
-      });
-      return;
-    }
-
-    if (sheetsService.isGoogleSpreadsheetUrl(cleanUrl)) {
-      setTestResult({
-        success: false,
-        message: 'Google Spreadsheet document link detected. You must deploy the Apps Script as a Web App and paste the /exec URL.',
-      });
-      return;
-    }
-
-    setIsSavingToFileSystem(true);
-    setTestResult(null);
-
-    const res = await sheetsService.saveToFileSystem(cleanUrl, cleanSheetId);
-    setIsSavingToFileSystem(false);
-
-    if (res.success) {
-      showBanner('success', 'URL successfully fixed and saved to file system (src/config/sheetsConfig.ts)!');
-      setTestResult({
-        success: true,
-        message: 'Fixed in File System! All users, sessions, and Vercel visitors will now use this permanent URL.',
-      });
-      onRefresh();
-    } else {
-      setTestResult({
-        success: false,
-        message: res.message,
-      });
-      showBanner('error', res.message);
-    }
-  };
-
-  const handleCopyFsSnippet = () => {
-    const url = (webAppUrlInput || sheetsConfig.webAppUrl || '').trim();
-    const sheetId = (sheetIdInput || sheetsConfig.sheetId || '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms').trim();
-
-    const snippet = `/**
- * ============================================================================
- * FILE-SYSTEM AUTHORITATIVE GOOGLE SHEETS & APPS SCRIPT CONFIGURATION
- * ============================================================================
- */
-export const FILE_SYSTEM_SHEETS_CONFIG = {
-  // Live Google Apps Script Web App URL:
-  webAppUrl: '${url}',
-
-  // Google Spreadsheet Document ID:
-  sheetId: '${sheetId}',
-
-  tabNames: {
-    holidayPackages: 'Holiday_Packages',
-    visaServices: 'Visa_Services',
-    bookings: 'Bookings_Leads',
-    applications: 'Visa_Applications',
-    logs: 'Activity_Logs',
-  },
-};
-`;
-
-    navigator.clipboard.writeText(snippet);
-    setCopiedFsSnippet(true);
-    setTimeout(() => setCopiedFsSnippet(false), 2500);
-    showBanner('success', 'Copied TypeScript configuration code for src/config/sheetsConfig.ts!');
-  };
-
-  // Save Apps Script Config
-  const handleSaveConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setTestingConnection(true);
-    setTestResult(null);
-
-    let cleanUrl = webAppUrlInput.trim();
-    let cleanSheetId = sheetIdInput.trim();
-
-    if (sheetsService.isGoogleSpreadsheetUrl(cleanUrl)) {
-      const extracted = sheetsService.extractSheetId(cleanUrl);
-      if (extracted) {
-        cleanSheetId = extracted;
-        setSheetIdInput(extracted);
-      }
-      cleanUrl = '';
-      setWebAppUrlInput('');
-      setTestResult({
-        success: false,
-        message: 'Google Spreadsheet document link detected. We extracted your Sheet ID. For live API access, follow the 3-step guide below to deploy the Apps Script as a Web App.',
-      });
-      sheetsService.clearCustomUrl();
-      setTestingConnection(false);
-      onRefresh();
-      return;
-    }
-
-    await sheetsService.updateConfig({
-      webAppUrl: cleanUrl,
-      sheetId: cleanSheetId,
-      isCustomUrlActive: !!cleanUrl,
-    });
-
-    if (cleanUrl) {
-      const pingRes = await sheetsService.testConnection(cleanUrl);
-      setTestResult(pingRes);
-    } else {
-      setTestResult({ success: true, message: 'Saved in Local Sheets Mirror mode.' });
-    }
-
-    setTestingConnection(false);
-    onRefresh();
-  };
-
-  const handleDisconnectUrl = () => {
-    sheetsService.clearCustomUrl();
-    setWebAppUrlInput('');
-    setTestResult({ success: true, message: 'Disconnected Web App URL. Operating smoothly in Local Database mode.' });
-    onRefresh();
-  };
-
-  const handleTestConnection = async () => {
-    const cleanUrl = webAppUrlInput.trim();
-    if (!cleanUrl) {
-      setTestResult({ success: false, message: 'Please enter a Google Apps Script Web App URL first.' });
-      return;
-    }
-
-    if (sheetsService.isGoogleSpreadsheetUrl(cleanUrl)) {
-      const extracted = sheetsService.extractSheetId(cleanUrl);
-      setTestResult({
-        success: false,
-        message: `This is a Google Spreadsheet URL (Sheet ID: ${extracted || 'detected'}), not the Apps Script Web App deployment URL. Deploy the Apps Script in Extensions > Apps Script and paste the /exec URL.`,
-      });
-      return;
-    }
-
-    setTestingConnection(true);
-    setTestResult(null);
-    const res = await sheetsService.testConnection(cleanUrl);
-    setTestResult(res);
-    setTestingConnection(false);
-  };
-
-  const handleTestEmail = async () => {
-    const cleanUrl = webAppUrlInput.trim();
-    if (!cleanUrl) {
-      setTestResult({ success: false, message: 'Please enter a Google Apps Script Web App URL first.' });
-      return;
-    }
-    setTestingEmail(true);
-    setTestResult(null);
-    const res = await sheetsService.testAppsScriptEmail(cleanUrl);
-    setTestResult(res);
-    setTestingEmail(false);
-  };
-
-  const handleCopyScript = () => {
-    navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_CODE);
-    setCopiedScript(true);
-    setTimeout(() => setCopiedScript(false), 2500);
-  };
 
   const [actionBanner, setActionBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -475,69 +282,32 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
     onRefresh();
   };
 
-  const handleCopyDirectUrl = () => {
-    const url = `${window.location.origin}/?admin=true`;
-    navigator.clipboard.writeText(url);
-    setCopiedDirectUrl(true);
-    setTimeout(() => setCopiedDirectUrl(false), 2500);
-  };
-
   return (
     <div className="py-8 px-4 sm:px-8 max-w-7xl mx-auto space-y-8">
-      {/* Top Banner: Operations & Database Management Overview */}
+      {/* Top Banner: Operations & Dashboard Overview */}
       <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                <Database className="w-3.5 h-3.5" />
-                <span>Travel Operations & Database Portal</span>
+            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>TripMyTour Travel Desk Console</span>
               </div>
-
-              <button
-                type="button"
-                onClick={handleCopyDirectUrl}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
-                title="Copy the secret URL to access this admin terminal directly without public links"
-              >
-                {copiedDirectUrl ? (
-                  <>
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span className="text-emerald-300">Staff Link Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3 h-3 text-slate-400" />
-                    <span>Copy Direct Link (?admin=true)</span>
-                  </>
-                )}
-              </button>
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
               Admin & Operations Dashboard
             </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-              Private staff portal hidden from public visitors. Hit directly via <code className="text-blue-300 bg-slate-800 px-1.5 py-0.5 rounded font-mono text-xs font-bold">/?admin=true</code> or <code className="text-blue-300 bg-slate-800 px-1.5 py-0.5 rounded font-mono text-xs font-bold">Ctrl+Shift+A</code>.
+            <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-xl leading-relaxed">
+              Manage holiday packages, visa catalog, traveler inquiries, and staff settings.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {onExitToSite && (
-              <button
-                onClick={onExitToSite}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:border-slate-500"
-                title="Exit to the public website"
-              >
-                <ArrowLeft className="w-4 h-4 text-blue-400" />
-                <span>Exit to Public Site</span>
-              </button>
-            )}
-
             {currentUser && (
-              <div className="flex items-center gap-3 bg-slate-800/90 border border-slate-700/90 px-3.5 py-2 rounded-xl text-xs">
-                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-                  <ShieldCheck className="w-4 h-4" />
+              <div className="flex items-center gap-3 bg-slate-800/90 border border-slate-700/90 px-3.5 py-2 rounded-2xl text-xs">
+                <div className="w-8 h-8 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold">
+                  <User className="w-4 h-4" />
                 </div>
                 <div className="text-left leading-tight">
                   <div className="font-bold text-white flex items-center gap-1.5">
@@ -548,72 +318,42 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono mt-0.5">{currentUser.email}</div>
                 </div>
-                {onLogout && (
-                  <button
-                    onClick={onLogout}
-                    title="Sign Out / Lock Admin Portal"
-                    className="ml-2 px-2.5 py-1 text-slate-300 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700 hover:border-rose-500/30"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Lock</span>
-                  </button>
-                )}
               </div>
             )}
 
             <button
-              onClick={async () => {
-                await sheetsService.syncWithGoogleSheets();
+              onClick={() => {
                 onRefresh();
+                sheetsService.syncWithGoogleSheets().then(() => onRefresh());
               }}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all"
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:border-slate-500"
+              title="Refresh records"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>Sync Database Now</span>
+              <RefreshCw className="w-4 h-4 text-emerald-400" />
+              <span>Refresh</span>
             </button>
 
-            <button
-              onClick={() => setAdminTab('sheets')}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs sm:text-sm flex items-center gap-2 transition-all"
-            >
-              <Code className="w-4 h-4 text-emerald-400" />
-              <span>Database Sync Config</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Sync Status Badge details */}
-        <div className="mt-6 pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400">Connection Status:</span>
-            {sheetsConfig.syncStatus === 'connected' ? (
-              <span className="flex items-center gap-1.5 font-bold text-emerald-400">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Connected to Google Apps Script
-              </span>
-            ) : sheetsConfig.syncStatus === 'syncing' ? (
-              <span className="flex items-center gap-1.5 font-bold text-blue-400">
-                <RefreshCw className="w-3 h-3 animate-spin" />
-                Synchronizing with Sheets...
-              </span>
-            ) : sheetsConfig.syncStatus === 'error' ? (
-              <span className="flex items-center gap-1.5 font-bold text-amber-400">
-                <AlertTriangle className="w-3 h-3" />
-                Connection Error ({sheetsConfig.errorMessage || 'Check Apps Script URL'})
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 font-bold text-slate-300">
-                <Database className="w-3 h-3 text-blue-400" />
-                Local Sheets Database Mirror Active
-              </span>
+            {onExitToSite && (
+              <button
+                onClick={onExitToSite}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:border-slate-500"
+                title="Exit to the public website"
+              >
+                <ArrowLeft className="w-4 h-4 text-blue-400" />
+                <span>Exit to Site</span>
+              </button>
             )}
-          </div>
 
-          <div className="text-slate-400">
-            Last Sync:{' '}
-            <span className="text-slate-200 font-mono font-medium">
-              {sheetsConfig.lastSyncedAt || 'Just now'}
-            </span>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Sign out of Admin Portal"
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:shadow-md"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Logout</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -664,20 +404,6 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
                 View Only
               </span>
             )}
-          </button>
-        )}
-
-        {canViewSheets && (
-          <button
-            onClick={() => setAdminTab('sheets')}
-            className={`pb-3 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
-              adminTab === 'sheets'
-                ? 'border-slate-900 text-slate-900'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Code className="w-4 h-4" />
-            <span>Cloud Database & Sync Setup</span>
           </button>
         )}
 
@@ -1286,493 +1012,7 @@ export const FILE_SYSTEM_SHEETS_CONFIG = {
       )}
 
       {/* ============================================================= */}
-      {/* TAB 4: GOOGLE SHEETS & APPS SCRIPT SETUP */}
-      {/* ============================================================= */}
-      {adminTab === 'sheets' && canViewSheets && (
-        <div className="space-y-8">
-          {!canManageSheets && (
-            <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl flex items-center gap-2.5 text-xs font-medium">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>
-                <strong>Read-Only Mode:</strong> Your staff account has view permission for database sync settings. Modifying the Google Apps Script Web App URL and database sync settings is restricted.
-              </span>
-            </div>
-          )}
-
-          {/* Active Database Endpoint Source Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <div className="p-2.5 rounded-xl bg-slate-900 text-white shrink-0 mt-0.5 shadow-xs">
-                  <HardDrive className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-bold text-slate-900">
-                      Authoritative Database Endpoint
-                    </h3>
-                    {sheetsConfig.source === 'file_system' || sheetsConfig.isFileSystemFixed ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        Fixed in File System (`src/config/sheetsConfig.ts`)
-                      </span>
-                    ) : sheetsConfig.source === 'env_var' ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-bold border border-blue-300 flex items-center gap-1">
-                        <Globe className="w-3.5 h-3.5 text-blue-600" />
-                        Active from Vercel Env Variable
-                      </span>
-                    ) : sheetsConfig.isCustomUrlActive ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold border border-amber-300">
-                        Browser Storage Active
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200">
-                        Local Seed Database Active
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                    {sheetsConfig.source === 'file_system' || sheetsConfig.isFileSystemFixed
-                      ? 'This URL is permanently stored in the repository file system (`src/config/sheetsConfig.ts`). It is automatically bundled on Vercel for all visitors, devices, and sessions.'
-                      : 'To prevent relying on browser local storage, you can fix and store this URL directly in `src/config/sheetsConfig.ts` on the file system.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleCopyFsSnippet}
-                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title="Copy configuration snippet for src/config/sheetsConfig.ts"
-                >
-                  <FileCode className="w-3.5 h-3.5 text-slate-600" />
-                  <span>{copiedFsSnippet ? 'Copied File Snippet!' : 'Copy File System Config'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Form to paste Web App URL */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs">
-            <h2 className="text-xl font-bold text-slate-900 mb-2">
-              Google Apps Script Web App Connectivity
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-500 mb-6">
-              Connect your live Google Spreadsheet by deploying the Google Apps Script below and pasting the generated Web App URL.
-            </p>
-
-            <form onSubmit={handleSaveConfig} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Google Apps Script Web App URL
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
-                    value={webAppUrlInput}
-                    onChange={(e) => setWebAppUrlInput(e.target.value)}
-                    disabled={!canManageSheets}
-                    className="flex-1 px-4 py-3 text-xs sm:text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono disabled:opacity-60 disabled:cursor-not-allowed"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleTestConnection}
-                    disabled={testingConnection || testingEmail}
-                    className="px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs shrink-0 transition-colors cursor-pointer"
-                  >
-                    {testingConnection ? 'Testing...' : 'Test Ping'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleTestEmail}
-                    disabled={testingConnection || testingEmail}
-                    className="px-4 py-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs shrink-0 border border-blue-200 transition-colors flex items-center gap-1.5 cursor-pointer"
-                    title="Sends an instant test lead email via Google Apps Script"
-                  >
-                    <Mail className="w-3.5 h-3.5 text-blue-600" />
-                    <span>{testingEmail ? 'Sending...' : 'Test Email Alert'}</span>
-                  </button>
-                </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">
-                  Must be deployed with "Execute as: Me" and "Who has access: Anyone". Email notifications are sent automatically using Google's MailApp!
-                </span>
-
-                {sheetsService.isGoogleSpreadsheetUrl(webAppUrlInput) && (
-                  <div className="mt-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <span>
-                      <strong>Notice:</strong> This is a Google Sheets document link. To connect live, deploy the Apps Script below as a Web App.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const extracted = sheetsService.extractSheetId(webAppUrlInput);
-                        if (extracted) setSheetIdInput(extracted);
-                        setWebAppUrlInput('');
-                      }}
-                      className="px-3 py-1.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-lg font-bold shrink-0 text-[11px] transition-colors"
-                    >
-                      Extract Sheet ID & Clear
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Google Spreadsheet ID (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g., 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-                  value={sheetIdInput}
-                  onChange={(e) => setSheetIdInput(e.target.value)}
-                  className="w-full px-4 py-3 text-xs sm:text-sm bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                />
-              </div>
-
-              {testResult && (
-                <div
-                  className={`p-4 rounded-xl text-xs flex items-center gap-2 ${
-                    testResult.success
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                      : 'bg-amber-50 text-amber-800 border border-amber-200'
-                  }`}
-                >
-                  {testResult.success ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  )}
-                  <span>{testResult.message}</span>
-                </div>
-              )}
-
-              {canManageSheets && (
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleSaveToFileSystem}
-                      disabled={isSavingToFileSystem || !canManageSheets}
-                      className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold text-xs sm:text-sm shadow-sm flex items-center gap-2 transition-all cursor-pointer"
-                      title="Writes this Web App URL directly to src/config/sheetsConfig.ts on the file system so it persists across all devices and Vercel deployments"
-                    >
-                      <HardDrive className="w-4 h-4" />
-                      <span>{isSavingToFileSystem ? 'Writing to File System...' : 'Save to File System (Permanent)'}</span>
-                    </button>
-
-                    <button
-                      type="submit"
-                      className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
-                      title="Saves configuration for active session"
-                    >
-                      Save Configuration
-                    </button>
-
-                    {(webAppUrlInput || sheetsConfig.webAppUrl) && (
-                      <button
-                        type="button"
-                        onClick={handleDisconnectUrl}
-                        className="px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs sm:text-sm transition-colors cursor-pointer"
-                      >
-                        Disconnect & Use Local Mode
-                      </button>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm('Reset database back to original sample holiday & visa templates?')) {
-                        sheetsService.resetToDefaultTemplate();
-                        onRefresh();
-                      }
-                    }}
-                    className="text-xs text-rose-600 hover:underline font-semibold cursor-pointer"
-                  >
-                    Reset to Default Seed Data
-                  </button>
-                </div>
-              )}
-            </form>
-          </div>
-
-          {/* File System Permanent Database Configuration Box */}
-          <div className="bg-emerald-50/60 rounded-2xl border border-emerald-200 p-6 sm:p-8">
-            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <div className="p-2.5 rounded-xl bg-emerald-600 text-white shrink-0 shadow-sm mt-0.5">
-                  <HardDrive className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-bold text-slate-900">
-                      File System Authoritative Configuration (`src/config/sheetsConfig.ts`)
-                    </h3>
-                    {sheetsConfig.source === 'file_system' || sheetsConfig.isFileSystemFixed ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        Live in Codebase
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-medium border border-slate-300">
-                        Ready to Save
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed max-w-2xl">
-                    By storing your Google Apps Script Web App URL in <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-200 font-mono text-emerald-800 font-bold">src/config/sheetsConfig.ts</code>, you eliminate reliance on browser localStorage. Every admin, staff member, and custom domain visitor connects automatically without configuring anything in their browser!
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCopyFsSnippet}
-                disabled={!webAppUrlInput && !sheetsConfig.webAppUrl}
-                className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer disabled:cursor-not-allowed"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>{copiedFsSnippet ? 'Copied File Snippet!' : 'Copy File Configuration'}</span>
-              </button>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-emerald-200/70 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-              <div className="bg-white/85 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-100 space-y-1">
-                <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] flex items-center justify-center font-bold">A</span>
-                  One-Click Save via Admin Portal
-                </div>
-                <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Click <strong>"Save to File System (Permanent)"</strong> above. The app will immediately write your Web App URL into <code className="text-emerald-700 font-mono">src/config/sheetsConfig.ts</code>.
-                </p>
-              </div>
-
-              <div className="bg-white/85 backdrop-blur-xs p-3.5 rounded-xl border border-emerald-100 space-y-1">
-                <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] flex items-center justify-center font-bold">B</span>
-                  Permanent Across Vercel & Devices
-                </div>
-                <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Because the URL is part of the project source code, when you deploy to Vercel or export your project, Google Sheets acts as your real-time database across all browsers and devices.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Vercel & Custom Domain Live Database Configuration */}
-          <div className="bg-linear-to-br from-indigo-50/80 via-blue-50/50 to-slate-50 rounded-2xl border border-blue-200 p-6 sm:p-8">
-            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <div className="p-2.5 rounded-xl bg-blue-600 text-white shrink-0 shadow-sm mt-0.5">
-                  <Globe className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-bold text-slate-900">
-                      Vercel & Custom Domain Instant Sync Guide
-                    </h3>
-                    {(import.meta as any)?.env?.VITE_GOOGLE_SHEETS_WEB_APP_URL ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        Vercel Env Variable Active
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold border border-amber-300">
-                        Browser Storage Active
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed max-w-2xl">
-                    When you host on Vercel with your custom domain, holiday packages and visa services should fetch and save directly to your Google Sheets database so all admins and visitors see real-time data across all devices and sessions.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const val = `VITE_GOOGLE_SHEETS_WEB_APP_URL=${(webAppUrlInput || sheetsConfig.webAppUrl || '').trim()}`;
-                  navigator.clipboard.writeText(val);
-                  setCopiedEnvVar(true);
-                  setTimeout(() => setCopiedEnvVar(false), 2500);
-                }}
-                disabled={!webAppUrlInput && !sheetsConfig.webAppUrl}
-                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer disabled:cursor-not-allowed"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>{copiedEnvVar ? 'Copied Env Line!' : 'Copy Vercel Env Variable'}</span>
-              </button>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-blue-200/70 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-              <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-xl border border-blue-100 space-y-1">
-                <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] flex items-center justify-center font-bold">1</span>
-                  Copy Web App URL
-                </div>
-                <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Deploy your Apps Script with "Execute as: Me" and "Who has access: Anyone". Copy the <code className="text-blue-600 font-mono">/exec</code> URL.
-                </p>
-              </div>
-
-              <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-xl border border-blue-100 space-y-1">
-                <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] flex items-center justify-center font-bold">2</span>
-                  Add to Vercel Settings
-                </div>
-                <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Go to Vercel Dashboard → Your Project → Settings → Environment Variables. Add key <code className="text-blue-600 font-mono">VITE_GOOGLE_SHEETS_WEB_APP_URL</code>.
-                </p>
-              </div>
-
-              <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-xl border border-blue-100 space-y-1">
-                <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 text-[10px] flex items-center justify-center font-bold">3</span>
-                  Redeploy on Custom Domain
-                </div>
-                <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Trigger a redeploy. Your site on your custom domain will now communicate directly with Google Sheets as its live database!
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Google Sheets Phone #ERROR! Formula Prevention Guide */}
-          <div className="bg-white rounded-2xl border border-amber-200 p-6 sm:p-8 space-y-4 shadow-xs">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <div className="p-2.5 rounded-xl bg-amber-500 text-white shrink-0 shadow-sm mt-0.5">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Google Sheets Mobile Number Formula Fix (<code className="text-rose-600 font-mono text-sm">#ERROR!</code>)
-                  </h3>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed max-w-3xl">
-                    Why does Google Sheets show <strong>#ERROR! (Formula parse error)</strong> on mobile numbers? When a phone number starts with a plus sign (<code className="text-amber-900 font-mono">+91 98803 71756</code>), Google Sheets interprets the <code className="font-mono text-amber-900">+</code> as a mathematical operator (formula) and produces a parse error with a red triangle.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleRepairPhones}
-                disabled={isRepairingPhones}
-                className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isRepairingPhones ? 'animate-spin' : ''}`} />
-                <span>{isRepairingPhones ? 'Repairing Cells in Sheets...' : 'Run Auto-Repair in Sheets'}</span>
-              </button>
-            </div>
-
-            {repairStatusMessage && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{repairStatusMessage}</span>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-2">
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                <div className="font-bold text-slate-800">1. Plain-Text Formatting</div>
-                <p className="text-slate-500 text-[11px] leading-relaxed">
-                  The updated Apps Script script formats <code className="font-mono text-slate-700">customerPhone</code> and <code className="font-mono text-slate-700">applicantPhone</code> columns with the <code className="font-mono text-blue-600">@</code> (plain text) mask.
-                </p>
-              </div>
-
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                <div className="font-bold text-slate-800">2. Apostrophe Prefix Protection</div>
-                <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Every lead submission automatically prefixes international numbers with a single apostrophe (<code className="font-mono text-blue-600">'+91...</code>), which tells Google Sheets to treat the value strictly as text.
-                </p>
-              </div>
-
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                <div className="font-bold text-slate-800">3. Live Self-Healing</div>
-                <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Whenever the app syncs with Google Sheets, the updated <code className="font-mono text-blue-600">Code.gs</code> inspects existing cell formulas, extracts the real phone number, and fixes the cell permanently.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Setup Guide */}
-          <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 sm:p-8 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">
-                  Ready-to-Deploy Google Apps Script Code (`Code.gs`)
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Copy this complete Apps Script code directly into your Google Sheets project.
-                </p>
-              </div>
-
-              <button
-                onClick={handleCopyScript}
-                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>{copiedScript ? 'Copied to Clipboard!' : 'Copy Apps Script Code'}</span>
-              </button>
-            </div>
-
-            {/* Quick 4-step Instructions */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1">
-                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center mb-1.5">
-                  1
-                </div>
-                <div className="font-bold text-slate-900">Open Apps Script</div>
-                <div className="text-slate-500 text-[11px]">
-                  In your Google Sheet, click <strong className="text-slate-800">Extensions → Apps Script</strong>.
-                </div>
-              </div>
-
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1">
-                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center mb-1.5">
-                  2
-                </div>
-                <div className="font-bold text-slate-900">Paste Code & Save</div>
-                <div className="text-slate-500 text-[11px]">
-                  Paste this script into <code className="text-blue-600">Code.gs</code> and click Save.
-                </div>
-              </div>
-
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1">
-                <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[11px] flex items-center justify-center mb-1.5">
-                  3
-                </div>
-                <div className="font-bold text-slate-900">Test Email (Optional)</div>
-                <div className="text-slate-500 text-[11px]">
-                  Select <code className="text-emerald-700 font-mono">testEmailNotification</code> and click Run to verify inbox delivery.
-                </div>
-              </div>
-
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1">
-                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center mb-1.5">
-                  4
-                </div>
-                <div className="font-bold text-slate-900">Deploy as Web App</div>
-                <div className="text-slate-500 text-[11px]">
-                  Deploy → New Deployment → Web app (Execute as: <strong>Me</strong>, Access: <strong>Anyone</strong>).
-                </div>
-              </div>
-            </div>
-
-            {/* Syntax preview box */}
-            <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-900 text-slate-200 text-xs font-mono p-4 max-h-80 overflow-y-auto">
-              <pre>{GOOGLE_APPS_SCRIPT_CODE}</pre>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================= */}
-      {/* TAB 6: LEAD EMAIL ALERTS MANAGEMENT */}
+      {/* TAB 4: LEAD EMAIL ALERTS MANAGEMENT */}
       {/* ============================================================= */}
       {adminTab === 'emails' && canViewEmails && (
         <AdminLeadEmailManager />

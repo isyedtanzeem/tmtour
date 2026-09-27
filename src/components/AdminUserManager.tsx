@@ -357,11 +357,11 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
             type="button"
             onClick={handleSyncFromSheets}
             disabled={isSyncingSheets || isProcessing}
-            title="Refresh staff records directly from Google Sheets Staff_Users sheet"
+            title="Refresh staff records"
             className="px-4 py-3 rounded-2xl bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 border border-slate-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-2xs hover:shadow-xs transition-all cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 text-emerald-600 ${isSyncingSheets ? 'animate-spin' : ''}`} />
-            <span>{isSyncingSheets ? 'Syncing...' : 'Sync from Sheets'}</span>
+            <span>{isSyncingSheets ? 'Refreshing...' : 'Refresh Records'}</span>
           </button>
 
           <button
@@ -372,22 +372,6 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
             <UserPlus className="w-4 h-4" />
             <span>Create New Staff User</span>
           </button>
-        </div>
-      </div>
-
-      {/* Google Sheets Tab Sync Info Banner */}
-      <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2.5 text-slate-700">
-          <Database className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>
-            <strong>Google Sheets Staff Storage:</strong> Connected to sheet tab <code className="bg-white px-2 py-0.5 rounded-md border border-slate-200 font-mono text-emerald-700 font-semibold">Staff_Users</code>. New staff users and role permissions are automatically synchronized and validated via Google Apps Script.
-          </span>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Sheets Database Synced</span>
-          </span>
         </div>
       </div>
 
@@ -977,37 +961,6 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
                           className="w-4 h-4 rounded text-blue-600"
                         />
                         <span>Delete</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Database Sync */}
-                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <Code className="w-4 h-4 text-slate-700 shrink-0" />
-                      <div>
-                        <div className="font-bold text-xs text-slate-900">Google Sheets Sync & Apps Script</div>
-                        <div className="text-[11px] text-slate-500">Web App script deployment and sync endpoints</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs font-semibold">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formPermissions.databaseSync.view}
-                          onChange={() => handlePermissionToggle('databaseSync', 'view')}
-                          className="w-4 h-4 rounded text-blue-600"
-                        />
-                        <span>View Status</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formPermissions.databaseSync.manage}
-                          onChange={() => handlePermissionToggle('databaseSync', 'manage')}
-                          className="w-4 h-4 rounded text-blue-600"
-                        />
-                        <span>Manage & Sync</span>
                       </label>
                     </div>
                   </div>

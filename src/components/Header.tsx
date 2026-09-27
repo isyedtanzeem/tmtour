@@ -4,19 +4,13 @@ import {
   FileCheck, 
   Compass, 
   ShieldCheck, 
-  Search, 
-  Settings, 
-  Database, 
   Menu, 
   X, 
-  RefreshCw,
   PhoneCall,
-  CheckCircle2,
-  AlertCircle,
-  Mail,
-  Lock,
-  ArrowLeft,
-  MessageSquare
+  Mail, 
+  ArrowLeft, 
+  MessageSquare,
+  LogOut
 } from 'lucide-react';
 import { GoogleSheetsConfig, ActiveTabType } from '../types';
 import { BUSINESS_INFO } from '../utils/formatters';
@@ -24,11 +18,12 @@ import { BUSINESS_INFO } from '../utils/formatters';
 interface HeaderProps {
   activeTab: ActiveTabType;
   setActiveTab: (tab: ActiveTabType) => void;
-  sheetsConfig: GoogleSheetsConfig;
-  onSyncClick: () => void;
-  isSyncing: boolean;
+  sheetsConfig?: GoogleSheetsConfig;
+  onSyncClick?: () => void;
+  isSyncing?: boolean;
   isAdminAuthenticated?: boolean;
   onExitAdmin?: () => void;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,56 +34,11 @@ export const Header: React.FC<HeaderProps> = ({
   isSyncing,
   isAdminAuthenticated = false,
   onExitAdmin,
+  onLogout,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currency, setCurrency] = useState('INR (₹)');
   const logoUrl = '/logo.svg';
-
-  const getSyncBadge = () => {
-    if (sheetsConfig.syncStatus === 'connected') {
-      return (
-        <button
-          onClick={onSyncClick}
-          title="Cloud Database Connected. Click to sync now."
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
-        >
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Database Live</span>
-          <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-        </button>
-      );
-    }
-    if (sheetsConfig.syncStatus === 'syncing' || isSyncing) {
-      return (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-          <RefreshCw className="w-3 h-3 animate-spin text-blue-600" />
-          <span>Syncing Data...</span>
-        </div>
-      );
-    }
-    if (sheetsConfig.syncStatus === 'error') {
-      return (
-        <button
-          onClick={onSyncClick}
-          title={sheetsConfig.errorMessage || 'Sync error'}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
-        >
-          <AlertCircle className="w-3 h-3 text-amber-600" />
-          <span>Offline (Retry)</span>
-        </button>
-      );
-    }
-    // Local fallback
-    return (
-      <div
-        title="Local Database Active"
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-200 border border-slate-700"
-      >
-        <Database className="w-3 h-3 text-blue-400" />
-        <span>Database Active</span>
-      </div>
-    );
-  };
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
@@ -111,14 +61,10 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            {activeTab === 'admin' ? (
-              getSyncBadge()
-            ) : (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-emerald-400 border border-slate-700">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Verified Travel Agency</span>
-              </div>
-            )}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-emerald-400 border border-slate-700">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Verified Travel Agency</span>
+            </div>
 
             <select
               value={currency}
@@ -215,13 +161,25 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right CTA / Action */}
         <div className="hidden md:flex items-center gap-3">
           {activeTab === 'admin' ? (
-            <button
-              onClick={onExitAdmin || (() => setActiveTab('home'))}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white transition-all shadow-xs cursor-pointer border border-slate-700"
-            >
-              <ArrowLeft className="w-4 h-4 text-slate-300" />
-              <span>Exit to Public Site</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onExitAdmin || (() => setActiveTab('home'))}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white transition-all shadow-xs cursor-pointer border border-slate-700"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-300" />
+                <span>Exit to Public Site</span>
+              </button>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-bold bg-rose-600 hover:bg-rose-700 text-white transition-all shadow-xs cursor-pointer"
+                  title="Sign out / Logout of Admin Portal"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
+                </button>
+              )}
+            </div>
           ) : (
             <>
               <a
@@ -293,17 +251,31 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Contact Us</span>
           </button>
           {activeTab === 'admin' && (
-            <button
-              onClick={() => { 
-                if (onExitAdmin) onExitAdmin();
-                else setActiveTab('home'); 
-                setMobileMenuOpen(false); 
-              }}
-              className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold bg-slate-900 text-white flex items-center gap-2"
-            >
-              <ArrowLeft className="w-4 h-4 text-slate-300" />
-              <span>Exit to Public Site</span>
-            </button>
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => { 
+                  if (onExitAdmin) onExitAdmin();
+                  else setActiveTab('home'); 
+                  setMobileMenuOpen(false); 
+                }}
+                className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold bg-slate-900 text-white flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-300" />
+                <span>Exit to Public Site</span>
+              </button>
+              {onLogout && (
+                <button
+                  onClick={() => {
+                    onLogout();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold bg-rose-600 text-white flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
